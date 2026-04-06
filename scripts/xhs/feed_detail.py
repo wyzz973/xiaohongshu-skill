@@ -124,7 +124,7 @@ def get_feed_detail(
     sleep_random(800, 1500)
 
     # 检查页面可访问性（扫码验证时自动等待重试）
-    _check_page_accessible(page, url)
+    _check_page_accessible(page, url, feed_id=feed_id)
 
     # 验证页面未被重定向（xsec_token 过期时 SPA 可能静默跳转）
     current_url = page.evaluate("window.location.href") or ""
@@ -148,7 +148,9 @@ def get_feed_detail(
 # ========== 页面检查 ==========
 
 
-def _check_page_accessible(page: Page, url: str = "") -> None:
+def _check_page_accessible(
+    page: Page, url: str = "", feed_id: str = "",
+) -> None:
     """检查页面是否可访问。
 
     优先检测 404/不可访问（token 过期等），再检测扫码验证。
@@ -183,6 +185,13 @@ def _check_page_accessible(page: Page, url: str = "") -> None:
                 " Chrome 中手动打开该笔记完成验证"
             )
         if not retry_text or not retry_text.strip():
+            # 验证已消失，但需确认页面仍指向目标笔记
+            if feed_id:
+                current_url = page.evaluate("location.href")
+                if feed_id not in current_url:
+                    raise NoFeedDetailError(
+                        f"重试后页面未返回目标笔记 (feed_id={feed_id})"
+                    )
             logger.info("验证已消失，继续加载笔记")
             return
         text = retry_text.strip()
