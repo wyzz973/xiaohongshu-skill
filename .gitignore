@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.env
+
+# Chrome profiles & cookies
+chrome-data/
+*.cookies.json
+
+# Runtime data (these live in ~/.openclaw/workspace/)
+strategy.json
+content-calendar/
+drafts/
+published/
+analytics/
+logs/
+
+# Temp files
+/tmp/xhs-*.txt
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

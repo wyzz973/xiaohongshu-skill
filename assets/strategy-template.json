@@ -1,0 +1,77 @@
+{
+  "_schema_version": "1.0",
+  "_description": "小红书 24/7 自动运营策略档案。由 /xhs-autopilot setup 生成，可随时通过自然语言修改。",
+
+  "account": {
+    "nickname": "",
+    "track": "",
+    "sub_track": "",
+    "one_liner": "",
+    "xhs_id": ""
+  },
+
+  "persona": {
+    "type": "专业导师",
+    "call_reader": "姐妹们",
+    "call_self": "我",
+    "emoji_density": "中",
+    "tone_keywords": ["实用", "真诚", "有干货"],
+    "catchphrase": "",
+    "forbidden_words": ["总而言之", "值得一提的是", "众所周知"],
+    "content_form": "图文为主"
+  },
+
+  "content_strategy": {
+    "pillars": [
+      { "name": "支柱1名称", "description": "具体说明", "weight": 0.4 },
+      { "name": "支柱2名称", "description": "具体说明", "weight": 0.35 },
+      { "name": "支柱3名称", "description": "具体说明", "weight": 0.25 }
+    ],
+    "note_types": ["教程", "种草", "合集"],
+    "target_audience": {
+      "gender": "女性为主",
+      "age_range": "22-35",
+      "identity": "职场白领",
+      "pain_points": ["痛点1", "痛点2", "痛点3"]
+    },
+    "monetization": "涨粉"
+  },
+
+  "schedule": {
+    "timezone": "Asia/Shanghai",
+    "publish_frequency": "daily",
+    "publish_times": ["10:00", "16:00"],
+    "topic_research_time": "07:00",
+    "content_creation_time": "09:00",
+    "interact_time": "14:00",
+    "reply_time": "20:00",
+    "report_time": "22:00",
+    "auth_check_time": "02:00"
+  },
+
+  "interaction": {
+    "strategy": "mixed",
+    "daily_comment_limit": 20,
+    "daily_like_limit": 40,
+    "comment_interval_min_sec": 120,
+    "comment_interval_max_sec": 300,
+    "session_limit": 10,
+    "rest_after_session_min": 900,
+    "rest_after_session_max": 1800,
+    "target_keywords": ["赛道关键词1", "关键词2"],
+    "avoid_accounts": []
+  },
+
+  "safety": {
+    "require_publish_confirmation": true,
+    "notification_channel": "telegram",
+    "notification_target": "",
+    "use_test_account": true,
+    "max_retries_on_error": 0,
+    "stop_on_captcha": true,
+    "stop_on_rate_limit": true
+  },
+
+  "created_at": "",
+  "updated_at": ""
+}
