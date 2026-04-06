@@ -1,107 +1,126 @@
 ---
 name: xhs-auth
-description: >
-  Use when 用户要求登录小红书、检查登录状态、切换账号、扫码登录、
-  手机号登录、添加/删除/切换账号时触发。
-metadata:
-  openclaw:
-    requires:
-      bins: ["python3", "uv"]
-    emoji: "\U0001F510"
-    os: [darwin, linux]
+description: 小红书认证场景 — 登录状态检查、二维码/手机登录、登出、多账号管理
+version: 2.0.0
 ---
 
-# 小红书认证管理
+# 认证场景
 
-## 工具边界
+## 能力声明
 
-所有操作只通过 `python scripts/cli.py <子命令>` 执行。禁止 MCP 工具、外部项目或任何非本项目实现。
+本 Skill 处理小红书账号的认证生命周期：
+- 检查登录状态（自动获取二维码）
+- 二维码登录（阻塞/非阻塞两种模式）
+- 手机验证码登录（单步/分步两种模式）
+- 登出并清除 cookies
+- 多账号管理（添加/列出/删除/设默认）
 
-## 账号选择（前置）
+不能做：注册新账号、修改账号资料、绑定手机号。
 
-运行 `list-accounts`：0 个账号 → 不加 `--account`；1 个 → 自动使用并告知用户；多个 → 询问用户选择。选定后全程固定，不重复询问。
+## 命令清单
 
----
+| 命令 | 用途 | 必需参数 | 可选参数 | 退出码 |
+|------|------|---------|---------|--------|
+| `check-login` | 检查登录状态，未登录自动获取二维码 | 无 | `--account` | 0=已登录, 1=未登录(返回二维码) |
+| `login` | 二维码登录（阻塞等待120秒） | 无 | `--account` | 0=成功, 2=超时 |
+| `get-qrcode` | 获取二维码立即返回（非阻塞） | 无 | `--account` | 0=已登录/二维码已生成 |
+| `wait-login` | 等待扫码完成（配合get-qrcode） | 无 | `--timeout`, `--account` | 0=成功, 2=超时 |
+| `phone-login` | 手机验证码登录（交互式） | `--phone` | `--code`, `--account` | 0=成功, 1=频率限制转QR, 2=失败 |
+| `send-code` | 分步登录：发送验证码 | `--phone` | `--account` | 0=已发送, 1=频率限制转QR |
+| `verify-code` | 分步登录：填写验证码 | `--code` | `--account` | 0=成功, 2=验证码错误 |
+| `delete-cookies` | 退出登录并删除cookies | 无 | `--account` | 0=成功 |
+| `add-account` | 添加命名账号 | `--name` | `--description` | 0=成功 |
+| `list-accounts` | 列出所有账号 | 无 | 无 | 0=成功 |
+| `remove-account` | 删除账号 | `--name` | 无 | 0=成功 |
+| `set-default-account` | 设置默认账号 | `--name` | 无 | 0=成功 |
 
-## 检查登录状态
+CLI 前缀：`python /Users/sd3/xhs-workspace/xiaohongshu-skill/scripts/cli.py`
 
-```bash
-python scripts/cli.py check-login
-```
+## 执行协议
 
-- `"logged_in": true` → 已登录
-- `"logged_in": false` + `"login_method": "qrcode"` → 有界面，走二维码登录
-- `"logged_in": false` + `"login_method": "both"` → 无界面，询问用户选二维码或手机验证码
+### 场景 A：检查登录状态（最常用，其他场景前置）
 
-## 二维码登录
+#### 前置条件
+- Chrome 已通过 OpenClaw 启动（端口 9222 默认）
 
-`check-login` 未登录时自动返回 `qrcode_image_url` + `qrcode_path`，无需单独调 `get-qrcode`。
+#### 执行步骤
 
-**第一步** — 展示二维码：
+1. 运行 `check-login`
+2. 解析返回 JSON：
+   - `logged_in: true` → 认证通过，可执行后续场景
+   - `logged_in: false` → 进入登录流程（见场景 B/C）
 
-```
-请使用小红书 App 扫描以下二维码登录：
+#### 后置校验
+- 确认返回 JSON 包含 `logged_in` 字段
 
-![小红书登录二维码]({qrcode_image_url})
+#### 错误恢复
+| 现象 | 恢复动作 |
+|------|---------|
+| exit_code=2, "无法启动 Chrome" | 检查 Chrome 是否安装，端口是否被占用 |
+| 长时间无返回（>30秒） | Chrome 可能挂起，重启 Chrome 后重试 |
 
-您也可以在手机浏览器中直接访问此链接完成登录：
-{qr_login_url}
-```
+### 场景 B：二维码登录
 
-⚠️ **必须**同时展示 `qrcode_image_url` 和 `qr_login_url`（如有），禁止省略任一。
+#### 前置条件
+- check-login 返回 `logged_in: false`
 
-**第二步** — 等待（单次调用，无需轮询）：
+#### 执行步骤（推荐：非阻塞模式）
 
-```bash
-python scripts/cli.py wait-login
-```
+1. 运行 `get-qrcode`
+2. 返回 JSON 包含：
+   - `qrcode_path`: 本地二维码图片路径
+   - `qrcode_image_url`: base64 图片 URL（可直接展示给用户）
+   - `qr_login_url`: 登录链接（可选，取决于 QR 解码是否成功）
+3. 展示二维码给用户，提示扫码
+4. 运行 `wait-login --timeout 120`
+5. 解析结果：`logged_in: true` → 完成
 
-输出 `"logged_in": true` 则完成；超时则 `get-qrcode` 刷新后重试。
+#### 备选：阻塞模式
 
-⚠️ `get-qrcode` 在已登录状态下返回 `"logged_in": true` 而非二维码，只有未登录时才生成二维码。
+1. 运行 `login`（内部自动获取 QR + 阻塞等待 120 秒）
+2. 直接返回登录结果
 
-## 手机验证码登录
+#### 错误恢复
+| 现象 | 恢复动作 |
+|------|---------|
+| wait-login 超时 | 重新运行 get-qrcode 获取新二维码 |
+| qr_login_url 为空 | qrserver.com API 不可用，用 qrcode_path 展示图片即可 |
 
-⚠️ **每次登录都必须向用户确认手机号，禁止从记忆/上下文自动填入。**
+### 场景 C：手机验证码登录
 
-**第一步** — 询问用户手机号，确认后：
+#### 前置条件
+- check-login 返回 `logged_in: false`
+- 用户提供手机号
 
-```bash
-python scripts/cli.py send-code --phone <手机号>
-```
+#### 执行步骤（推荐：分步模式，适合 Agent）
 
-频率限制时自动返回二维码，切换为二维码登录。
+1. 运行 `send-code --phone <手机号>`
+2. 如返回 `status: "code_sent"` → 提示用户查看短信
+3. 获得验证码后运行 `verify-code --code <验证码>`
+4. 解析结果：`logged_in: true` → 完成
 
-**第二步** — 询问用户 6 位验证码，确认后：
+#### 错误恢复
+| 现象 | 恢复动作 |
+|------|---------|
+| exit_code=1 + `login_method: "qrcode"` | 触发频率限制，已自动切换为二维码，按场景 B 处理 |
+| verify-code 返回 "验证码错误" | 重新运行 verify-code（无需重发验证码） |
+| verify-code 连续 3 次失败 | 重新运行 send-code 获取新验证码 |
 
-```bash
-python scripts/cli.py verify-code --code <验证码>
-```
+### 场景 D：多账号管理
 
-## 退出登录
+#### 执行步骤
 
-`delete-cookies` 内部自动完成 UI 退出 + 清除本地 cookies：
+1. `list-accounts` — 查看现有账号
+2. `add-account --name <名称>` — 添加新账号（自动分配端口）
+3. `set-default-account --name <名称>` — 设置默认
+4. 后续所有命令加 `--account <名称>` 指定账号
 
-```bash
-python scripts/cli.py delete-cookies
-python scripts/cli.py --account work delete-cookies  # 指定账号
-```
+#### 注意
+- 每个账号有独立端口和 Chrome Profile，互不干扰
+- 选定账号后全程固定，不中途切换
 
-## 多账号管理
+## 安全限制
 
-每个命名账号独立端口（从 9223 起）和独立 Chrome Profile，完全隔离。
-
-```bash
-python scripts/cli.py add-account --name work --description "工作号"
-python scripts/cli.py list-accounts
-python scripts/cli.py set-default-account --name work
-python scripts/cli.py remove-account --name personal
-python scripts/cli.py --account work check-login    # 指定账号执行
-```
-
-## 失败处理
-
-- **Chrome 未找到**：安装 Chrome 或设置 `CHROME_BIN`
-- **二维码超时**：`get-qrcode` 刷新后重试 `wait-login`
-- **验证码错误**：重新 `verify-code --code <新验证码>`
-- **CDP 连接失败**：检查 Chrome 是否开启 `--remote-debugging-port`
+- 登录操作无频率限制，但手机验证码受平台限制（约 1 分钟 1 次）
+- 触发频率限制时自动切换为二维码登录，无需人工干预
+- 遇到验证码弹窗 → 停止自动操作，通知用户手动处理
