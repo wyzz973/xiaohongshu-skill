@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 
 # ---------------------------------------------------------------------------
@@ -18,94 +17,27 @@ import sys
 from common import (
     VERSION,
     connect,
-    connect_fresh,
     connect_existing,
-    connect_saved_tab,
     output,
     logger,
-    normalize_tags,
-    save_session_tab,
-    load_session_tab,
-    clear_session_tab,
-    save_login_tab,
-    load_login_tab,
-    clear_login_tab,
-    open_file_if_display,
-    resolve_account,
-    update_account_nickname,
     headless_fallback,
-    qrcode_fallback,
-    cleanup_extra_tabs,
 )
 
-# 保留旧名称兼容（带下划线前缀），等其他场景迁移时删除
+# 保留旧名称兼容（测试文件 test_headless_login.py 通过 cli._ 访问）
 _connect = connect
-_connect_fresh = connect_fresh
 _connect_existing = connect_existing
-_connect_saved_tab = connect_saved_tab
 _output = output
-_normalize_tags = normalize_tags
-_save_session_tab = save_session_tab
-_load_session_tab = load_session_tab
-_clear_session_tab = clear_session_tab
-_save_login_tab = save_login_tab
-_load_login_tab = load_login_tab
-_clear_login_tab = clear_login_tab
-_open_file_if_display = open_file_if_display
-_resolve_account = resolve_account
-_update_account_nickname = update_account_nickname
 _headless_fallback = headless_fallback
-_qrcode_fallback = qrcode_fallback
-_cleanup_extra_tabs = cleanup_extra_tabs
 
 # ---------------------------------------------------------------------------
-# Auth 命令（已拆分到 commands/auth.py）
+# 命令注册（各场景已拆分到 commands/ 子包）
 # ---------------------------------------------------------------------------
 from commands.auth import register_auth_commands
 from commands.browse import register_browse_commands
 from commands.interact import register_interact_commands
 from commands.publish import register_publish_commands
+from commands.analytics import register_analytics_commands
 
-
-# ---------------------------------------------------------------------------
-# 创作服务平台数据采集命令
-# ---------------------------------------------------------------------------
-
-
-def cmd_list_my_notes(args: argparse.Namespace) -> None:
-    """获取我的全部笔记及深度分析数据。"""
-    from xhs.creator import list_my_notes
-
-    browser, page = _connect(args)
-    try:
-        data = list_my_notes(page)
-        _output(data)
-    finally:
-        browser.close()
-
-
-def cmd_get_dashboard(args: argparse.Namespace) -> None:
-    """获取账号总览仪表盘数据。"""
-    from xhs.creator import get_dashboard
-
-    browser, page = _connect(args)
-    try:
-        data = get_dashboard(page)
-        _output(data)
-    finally:
-        browser.close()
-
-
-def cmd_get_fans_profile(args: argparse.Namespace) -> None:
-    """获取粉丝画像数据。"""
-    from xhs.creator import get_fans_profile
-
-    browser, page = _connect(args)
-    try:
-        data = get_fans_profile(page)
-        _output(data)
-    finally:
-        browser.close()
 
 # ========== 参数解析 ==========
 
@@ -124,38 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # === Auth 场景（已拆分到 commands/auth.py）===
+    # === 各场景命令注册 ===
     register_auth_commands(subparsers)
-
-    # === Browse 场景（已拆分到 commands/browse.py）===
     register_browse_commands(subparsers)
-
-    # === Interact 场景（已拆分到 commands/interact.py）===
     register_interact_commands(subparsers)
-
-    # === Publish 场景（已拆分到 commands/publish.py）===
     register_publish_commands(subparsers)
-
-    # list-my-notes（获取我的全部笔记及深度分析数据）
-    sub = subparsers.add_parser(
-        "list-my-notes",
-        help="获取我的全部笔记列表及深度分析数据（曝光/CTR/观看时长/涨粉）",
-    )
-    sub.set_defaults(func=cmd_list_my_notes)
-
-    # get-dashboard（获取账号总览仪表盘）
-    sub = subparsers.add_parser(
-        "get-dashboard",
-        help="获取账号总览（粉丝/曝光/涨粉趋势/账号诊断）",
-    )
-    sub.set_defaults(func=cmd_get_dashboard)
-
-    # get-fans-profile（获取粉丝画像）
-    sub = subparsers.add_parser(
-        "get-fans-profile",
-        help="获取粉丝画像（性别/年龄/兴趣/地域）",
-    )
-    sub.set_defaults(func=cmd_get_fans_profile)
+    register_analytics_commands(subparsers)
 
     return parser
 
