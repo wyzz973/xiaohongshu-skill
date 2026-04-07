@@ -102,6 +102,10 @@ def main() -> None:
     )
     validate_strategy(strategy_path)
 
+    # Check CORE file protection
+    from common import check_core_protection
+    check_core_protection()
+
     try:
         args.func(args)
     except Exception as e:

@@ -354,3 +354,19 @@ def qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
     if login_url:
         result["qr_login_url"] = login_url
     output(result, exit_code=1)
+
+
+# ---------------------------------------------------------------------------
+# CORE 文件保护检查
+# ---------------------------------------------------------------------------
+def check_core_protection() -> None:
+    """Verify CORE memory files are read-only. Warn if not."""
+    import stat
+    core_file = os.path.join(
+        os.environ.get("XHS_WORKSPACE", os.path.expanduser("~/xhs-workspace")),
+        "logs", "memory", "identity.md"
+    )
+    if os.path.exists(core_file):
+        mode = os.stat(core_file).st_mode
+        if mode & stat.S_IWUSR or mode & stat.S_IWGRP or mode & stat.S_IWOTH:
+            logger.warning("CORE file is writable (should be read-only): %s", core_file)
