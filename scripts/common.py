@@ -11,6 +11,8 @@ import platform
 import subprocess
 import sys
 import tempfile
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -25,6 +27,11 @@ _VERSION_FILE = Path(__file__).parent / "VERSION"
 VERSION = _VERSION_FILE.read_text().strip() if _VERSION_FILE.exists() else "unknown"
 
 # ---------------------------------------------------------------------------
+# 请求 ID（每次 CLI 调用唯一）
+# ---------------------------------------------------------------------------
+REQUEST_ID = uuid.uuid4().hex[:8]
+
+# ---------------------------------------------------------------------------
 # 编码 & 日志
 # ---------------------------------------------------------------------------
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -37,6 +44,31 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger("xhs-cli")
+
+# ---------------------------------------------------------------------------
+# Audit logger — writes structured JSON to logs/audit.jsonl
+# ---------------------------------------------------------------------------
+_AUDIT_LOG = os.path.join(
+    os.environ.get("XHS_WORKSPACE", os.path.expanduser("~/xhs-workspace")),
+    "logs", "audit.jsonl",
+)
+
+
+def audit_log(action: str, **kwargs) -> None:
+    """Write structured audit entry to logs/audit.jsonl."""
+    import json as _json
+    entry = {
+        "ts": datetime.now(timezone(timedelta(hours=8))).isoformat(),
+        "req_id": REQUEST_ID,
+        "action": action,
+        **kwargs,
+    }
+    try:
+        os.makedirs(os.path.dirname(_AUDIT_LOG), exist_ok=True)
+        with open(_AUDIT_LOG, "a", encoding="utf-8") as f:
+            f.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        logger.debug("Failed to write audit log entry")
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +128,8 @@ def clear_session_tab(port: int) -> None:
 def output(data: dict, exit_code: int = 0) -> None:
     """输出 JSON 并退出。"""
     data.setdefault("version", VERSION)
+    # Audit log every CLI output
+    audit_log("cli_output", exit_code=exit_code, success=exit_code == 0)
     print(json.dumps(data, ensure_ascii=False, indent=2))
     sys.exit(exit_code)
 

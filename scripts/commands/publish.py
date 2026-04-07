@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from common import (
+    audit_log,
     connect,
     connect_existing,
     connect_fresh,
@@ -188,6 +189,7 @@ def cmd_click_publish(args: argparse.Namespace) -> None:
     browser, page = connect_existing(args)
     try:
         click_publish_button(page, tags=normalize_tags(args.tags))
+        audit_log("publish")
         output({"success": True, "status": "发布完成"})
     finally:
         browser.close()

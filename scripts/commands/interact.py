@@ -6,7 +6,7 @@ import argparse
 import json
 import os
 
-from common import connect, output, logger
+from common import audit_log, connect, logger, output
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +124,7 @@ def cmd_post_comment(args: argparse.Namespace) -> None:
             page, args.feed_id, args.xsec_token, args.content,
             xsec_source=getattr(args, "xsec_source", "pc_feed"),
         )
+        audit_log("comment", feed_id=args.feed_id)
         output({"success": True, "message": "评论发送成功"})
     except DuplicateCommentError as e:
         output({"success": False, "message": str(e), "duplicate": True})
@@ -178,6 +179,7 @@ def cmd_like_feed(args: argparse.Namespace) -> None:
             result = unlike_feed(page, args.feed_id, args.xsec_token, xsec_source)
         else:
             result = like_feed(page, args.feed_id, args.xsec_token, xsec_source)
+            audit_log("like", feed_id=args.feed_id)
         output(result.to_dict())
     finally:
         browser.close()
