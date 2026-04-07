@@ -93,6 +93,7 @@ def cmd_publish(args: argparse.Namespace) -> None:
 def cmd_fill_publish(args: argparse.Namespace) -> None:
     """只填写图文表单，不发布。"""
     from image_downloader import process_images
+    from publish_checker import validate_publish
     from xhs.publish import fill_publish_form
     from xhs.types import PublishImageContent
 
@@ -100,6 +101,12 @@ def cmd_fill_publish(args: argparse.Namespace) -> None:
         title = f.read().strip()
     with open(args.content_file, encoding="utf-8") as f:
         content = f.read().strip()
+
+    qc = validate_publish(title, content, note_type="image")
+    if not qc["pass"]:
+        output({"success": False, "error": "质检未通过", "issues": qc["errors"]}, exit_code=2)
+    if qc["warnings"]:
+        logger.warning("发布质检警告: %s", qc["warnings"])
 
     image_paths = process_images(args.images) if args.images else []
     if not image_paths:
@@ -124,6 +131,8 @@ def cmd_fill_publish(args: argparse.Namespace) -> None:
                 collection=args.collection or "",
             ),
         )
+        from checkpoint import save_checkpoint
+        save_checkpoint("fill_done", {"type": "image", "title": title})
         output(
             {
                 "success": True,
@@ -138,6 +147,7 @@ def cmd_fill_publish(args: argparse.Namespace) -> None:
 
 def cmd_fill_publish_video(args: argparse.Namespace) -> None:
     """只填写视频表单，不发布。"""
+    from publish_checker import validate_publish
     from xhs.publish_video import fill_publish_video_form
     from xhs.types import PublishVideoContent
 
@@ -145,6 +155,12 @@ def cmd_fill_publish_video(args: argparse.Namespace) -> None:
         title = f.read().strip()
     with open(args.content_file, encoding="utf-8") as f:
         content = f.read().strip()
+
+    qc = validate_publish(title, content, note_type="video")
+    if not qc["pass"]:
+        output({"success": False, "error": "质检未通过", "issues": qc["errors"]}, exit_code=2)
+    if qc["warnings"]:
+        logger.warning("发布质检警告: %s", qc["warnings"])
 
     browser, page = connect(args)
     try:
@@ -190,6 +206,8 @@ def cmd_click_publish(args: argparse.Namespace) -> None:
     try:
         click_publish_button(page, tags=normalize_tags(args.tags))
         audit_log("publish")
+        from checkpoint import clear_checkpoint
+        clear_checkpoint()
         output({"success": True, "status": "发布完成"})
     finally:
         browser.close()
@@ -202,6 +220,8 @@ def cmd_save_draft(args: argparse.Namespace) -> None:
     browser, page = connect_existing(args)
     try:
         save_as_draft(page)
+        from checkpoint import clear_checkpoint
+        clear_checkpoint()
         output({"success": True, "status": "内容已保存到草稿箱"})
     finally:
         browser.close()
@@ -209,12 +229,19 @@ def cmd_save_draft(args: argparse.Namespace) -> None:
 
 def cmd_long_article(args: argparse.Namespace) -> None:
     """长文模式：填写内容 + 一键排版，返回模板列表。"""
+    from publish_checker import validate_publish
     from xhs.publish_long_article import publish_long_article
 
     with open(args.title_file, encoding="utf-8") as f:
         title = f.read().strip()
     with open(args.content_file, encoding="utf-8") as f:
         content = f.read().strip()
+
+    qc = validate_publish(title, content, note_type="long_article")
+    if not qc["pass"]:
+        output({"success": False, "error": "质检未通过", "issues": qc["errors"]}, exit_code=2)
+    if qc["warnings"]:
+        logger.warning("发布质检警告: %s", qc["warnings"])
 
     markdown = getattr(args, "markdown", False)
 
@@ -246,6 +273,8 @@ def cmd_long_article(args: argparse.Namespace) -> None:
             logger.warning("扫描 tab 失败: %s", e)
         save_session_tab(actual_id, args.port)
         logger.info("session tab 已保存: %s", actual_id[:16])
+        from checkpoint import save_checkpoint
+        save_checkpoint("fill_done", {"type": "long_article", "title": title})
         output(
             {
                 "success": True,
@@ -308,10 +337,17 @@ def cmd_next_step(args: argparse.Namespace) -> None:
 
 def cmd_fill_text2image(args: argparse.Namespace) -> None:
     """只填写图文-文字配图表单，不发布。"""
+    from publish_checker import validate_publish
     from xhs.publish import fill_text2image_form
     from xhs.types import PublishImageContent
 
     title, content = _load_text2image_inputs(args)
+
+    qc = validate_publish(title, content, note_type="text2image")
+    if not qc["pass"]:
+        output({"success": False, "error": "质检未通过", "issues": qc["errors"]}, exit_code=2)
+    if qc["warnings"]:
+        logger.warning("发布质检警告: %s", qc["warnings"])
 
     browser, page = connect_fresh(args)
     try:
@@ -332,6 +368,8 @@ def cmd_fill_text2image(args: argparse.Namespace) -> None:
                 collection=args.collection or "",
             ),
         )
+        from checkpoint import save_checkpoint
+        save_checkpoint("fill_done", {"type": "text2image", "title": title})
         output({"success": True, "status": "文字配图已生成，等待确认发布"})
     finally:
         browser.close()
