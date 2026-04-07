@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 # ---------------------------------------------------------------------------
@@ -92,6 +93,14 @@ def main() -> None:
 
     parser = build_parser()
     args = parser.parse_args()
+
+    # Validate strategy.json on startup
+    from strategy_validator import validate_strategy
+    strategy_path = os.path.join(
+        os.environ.get("XHS_WORKSPACE", os.path.expanduser("~/xhs-workspace")),
+        "strategy.json"
+    )
+    validate_strategy(strategy_path)
 
     try:
         args.func(args)
