@@ -109,6 +109,12 @@ def _save_reply_tracker(tracker: dict, path: str) -> None:
 # ---------------------------------------------------------------------------
 def cmd_post_comment(args: argparse.Namespace) -> None:
     """发表评论。"""
+    from rate_limiter import check_and_increment
+    allowed, count, limit = check_and_increment("comment")
+    if not allowed:
+        output({"success": False, "error": f"今日评论已达上限 ({count}/{limit})"}, exit_code=2)
+        return
+
     from xhs.comment import post_comment
     from xhs.errors import DuplicateCommentError
 
@@ -127,6 +133,12 @@ def cmd_post_comment(args: argparse.Namespace) -> None:
 
 def cmd_reply_comment(args: argparse.Namespace) -> None:
     """回复评论。"""
+    from rate_limiter import check_and_increment
+    allowed, count, limit = check_and_increment("comment")
+    if not allowed:
+        output({"success": False, "error": f"今日评论已达上限 ({count}/{limit})"}, exit_code=2)
+        return
+
     from xhs.comment import reply_comment
 
     browser, page = connect(args)
@@ -150,6 +162,13 @@ def cmd_reply_comment(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 def cmd_like_feed(args: argparse.Namespace) -> None:
     """点赞/取消点赞。"""
+    from rate_limiter import check_and_increment
+    if not getattr(args, "unlike", False):
+        allowed, count, limit = check_and_increment("like")
+        if not allowed:
+            output({"success": False, "error": f"今日点赞已达上限 ({count}/{limit})"}, exit_code=2)
+            return
+
     from xhs.like_favorite import like_feed, unlike_feed
 
     browser, page = connect(args)
@@ -166,6 +185,13 @@ def cmd_like_feed(args: argparse.Namespace) -> None:
 
 def cmd_favorite_feed(args: argparse.Namespace) -> None:
     """收藏/取消收藏。"""
+    from rate_limiter import check_and_increment
+    if not getattr(args, "unfavorite", False):
+        allowed, count, limit = check_and_increment("favorite")
+        if not allowed:
+            output({"success": False, "error": f"今日收藏已达上限 ({count}/{limit})"}, exit_code=2)
+            return
+
     from xhs.like_favorite import favorite_feed, unfavorite_feed
 
     browser, page = connect(args)
@@ -236,6 +262,12 @@ def cmd_reply_notification(args: argparse.Namespace) -> None:
 
 def cmd_like_notification(args: argparse.Namespace) -> None:
     """在通知页面点赞评论。"""
+    from rate_limiter import check_and_increment
+    allowed, count, limit = check_and_increment("like")
+    if not allowed:
+        output({"success": False, "error": f"今日点赞已达上限 ({count}/{limit})"}, exit_code=2)
+        return
+
     from xhs.notification import like_notification, list_notifications
 
     browser, page = connect(args)

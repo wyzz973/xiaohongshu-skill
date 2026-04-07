@@ -177,6 +177,12 @@ def cmd_fill_publish_video(args: argparse.Namespace) -> None:
 
 def cmd_click_publish(args: argparse.Namespace) -> None:
     """点击发布按钮（在用户确认后调用）。复用已有的发布页 tab。"""
+    from rate_limiter import check_and_increment
+    allowed, count, limit = check_and_increment("publish")
+    if not allowed:
+        output({"success": False, "error": f"今日发布已达上限 ({count}/{limit})"}, exit_code=2)
+        return
+
     from xhs.publish import click_publish_button
 
     browser, page = connect_existing(args)
