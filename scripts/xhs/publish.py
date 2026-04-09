@@ -784,7 +784,7 @@ def _input_tags(page: Page, content_selector: str, tags: list[str]) -> None:
 
 
 def _input_single_tag(page: Page, content_selector: str, tag: str) -> None:
-    """输入单个标签。"""
+    """输入单个标签，优先匹配文本再点击（避免盲点第一个联想项）。"""
     # 输入 #
     page.type_text("#", delay_ms=0)
     time.sleep(0.3)
@@ -794,21 +794,56 @@ def _input_single_tag(page: Page, content_selector: str, tag: str) -> None:
         page.type_text(char, delay_ms=0)
         time.sleep(random.uniform(0.05, 0.12))
 
-    # 等待标签联想出现（最多 3 秒）
-    deadline = time.monotonic() + 3.0
+    # 等待标签联想并匹配文本（最多 4 秒）
+    tag_lower = tag.lower()
+    deadline = time.monotonic() + 4.0
     clicked = False
     while time.monotonic() < deadline:
-        time.sleep(0.5)
-        if page.has_element(TAG_TOPIC_CONTAINER):
-            item_selector = f"{TAG_TOPIC_CONTAINER} {TAG_FIRST_ITEM}"
-            if page.has_element(item_selector):
-                page.click_element(item_selector)
+        time.sleep(0.3)
+        if not page.has_element(TAG_TOPIC_CONTAINER):
+            continue
+
+        clicked_tag = page.evaluate(
+            f"""
+            (() => {{
+                const container = document.querySelector({json.dumps(TAG_TOPIC_CONTAINER)});
+                if (!container) return null;
+                const items = container.querySelectorAll('.item');
+                if (!items.length) return null;
+
+                const target = {json.dumps(tag_lower)};
+                let bestMatch = null;
+
+                for (const item of items) {{
+                    const text = (item.textContent || '').trim().replace(/^#/, '').toLowerCase();
+                    if (text === target) {{
+                        item.click();
+                        return text;
+                    }}
+                    if (!bestMatch && text.includes(target)) {{
+                        bestMatch = item;
+                    }}
+                }}
+
+                if (bestMatch) {{
+                    bestMatch.click();
+                    return (bestMatch.textContent || '').trim().replace(/^#/, '');
+                }}
+
+                items[0].click();
+                return (items[0].textContent || '').trim().replace(/^#/, '');
+            }})()
+            """
+        )
+        if clicked_tag is not None:
+            if clicked_tag.lower() == tag_lower:
                 logger.info("点击标签联想: %s", tag)
-                clicked = True
-                break
+            else:
+                logger.warning("标签联想不精确: 期望 '%s', 实际 '%s'", tag, clicked_tag)
+            clicked = True
+            break
 
     if not clicked:
-        # 没有联想，直接空格
         logger.warning("未找到标签联想，直接输入空格: %s", tag)
         page.type_text(" ", delay_ms=0)
 

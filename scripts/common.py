@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import json
 import logging
+import logging.handlers
 import os
 import platform
 import subprocess
@@ -44,6 +45,23 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger("xhs-cli")
+
+# 文件日志 — 所有 CLI/CDP 操作写入 logs/cli.log，方便外部监控
+_CLI_LOG_DIR = os.path.join(
+    os.environ.get("XHS_WORKSPACE", os.path.expanduser("~/xhs-workspace")),
+    "logs",
+)
+os.makedirs(_CLI_LOG_DIR, exist_ok=True)
+_cli_file_handler = logging.handlers.RotatingFileHandler(
+    os.path.join(_CLI_LOG_DIR, "cli.log"),
+    maxBytes=5 * 1024 * 1024,  # 5MB
+    backupCount=3,
+    encoding="utf-8",
+)
+_cli_file_handler.setFormatter(
+    logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+)
+logging.getLogger().addHandler(_cli_file_handler)  # 根 logger，捕获所有子 logger（xhs.cdp/xhs.comment 等）
 
 # ---------------------------------------------------------------------------
 # Audit logger — writes structured JSON to logs/audit.jsonl

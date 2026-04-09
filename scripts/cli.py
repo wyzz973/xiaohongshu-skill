@@ -94,13 +94,28 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    # Validate strategy.json on startup
+    # Validate strategy.json on startup — fail-closed for safety-critical commands
     from strategy_validator import validate_strategy
     strategy_path = os.path.join(
         os.environ.get("XHS_WORKSPACE", os.path.expanduser("~/xhs-workspace")),
         "strategy.json"
     )
-    validate_strategy(strategy_path)
+    SAFETY_CRITICAL = {
+        "post-comment", "reply-comment", "like-feed", "favorite-feed",
+        "like-notification", "reply-notification",
+        "publish", "publish-video", "publish-text2image",
+        "fill-publish", "fill-publish-video", "fill-text2image",
+        "click-publish", "long-article",
+    }
+    strategy = validate_strategy(strategy_path)
+    cmd_name = args.__dict__.get("func", lambda: None).__name__.replace("cmd_", "").replace("_", "-")
+    if strategy is None and cmd_name in SAFETY_CRITICAL:
+        print(json.dumps({
+            "success": False,
+            "error": "strategy.json 校验失败，安全关键命令已阻止。请修复配置后重试。",
+            "version": VERSION,
+        }, ensure_ascii=False, indent=2))
+        sys.exit(2)
 
     # Check CORE file protection
     from common import check_core_protection

@@ -355,14 +355,14 @@ hot_tags[], trending_material(时效性素材), comment_insights(评论区洞察
 
 | 意图 | 路由 |
 |------|------|
-| 登录/检查/切换账号 | `skills/xhs-auth/SKILL.md` |
-| 搜索/查看笔记/浏览首页 | `skills/xhs-explore/SKILL.md` |
-| 评论/回复/点赞/收藏 | `skills/xhs-interact/SKILL.md` |
+| 登录/认证/检查登录/二维码/验证码/账号管理 | `skills/xhs-auth/SKILL.md`（v2.0 Agent 协议） |
+| 搜索/查看笔记/浏览首页/竞品对标 | `skills/xhs-explore/SKILL.md`（v2.0 Agent 协议） |
+| 评论/回复/点赞/收藏/通知/去重 | `skills/xhs-interact/SKILL.md`（v2.0 Agent 协议） |
 | **帮我写一篇/创作笔记** | `skills/xhs-content-ops/SKILL.md` → 内容创作（完整流程） |
-| **发布已有内容/上传图文视频** | `skills/xhs-publish/SKILL.md` |
+| 发布/写稿/长文/图文/视频/文字配图 | `skills/xhs-publish/SKILL.md`（v2.0 Agent 协议） |
 | 竞品分析/热点追踪/批量互动 | `skills/xhs-content-ops/SKILL.md` |
-| **看数据/哪篇最火/涨粉情况** | `skills/xhs-content-ops/SKILL.md` → 数据分析 |
-| **粉丝画像/粉丝是什么人** | `skills/xhs-content-ops/SKILL.md` → 粉丝分析 |
+| 看数据/哪篇最火/涨粉情况/每日复盘 | `skills/xhs-analytics/SKILL.md`（v2.0 Agent 协议） |
+| 粉丝画像/粉丝是什么人 | `skills/xhs-analytics/SKILL.md`（v2.0 Agent 协议） |
 | **审核没过/为什么被限流** | `skills/xhs-content-ops/SKILL.md` → 审核诊断 |
 | 设置/修改运营策略 | Phase 0 setup 流程 |
 

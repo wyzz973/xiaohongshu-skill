@@ -1,20 +1,61 @@
-"""Daily rate limiter — enforces safety limits via persistent counter file."""
+"""Daily rate limiter — enforces safety limits via persistent counter file.
+
+Limits are loaded from strategy.json at runtime, falling back to safe defaults.
+"""
 from __future__ import annotations
-import json, os, time, logging
+import json, os, logging
 from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger("xhs-cli")
 
-_COUNTER_DIR = os.path.join(os.environ.get("XHS_WORKSPACE", os.path.expanduser("~/xhs-workspace")), "logs")
+_WORKSPACE = os.environ.get("XHS_WORKSPACE", os.path.expanduser("~/xhs-workspace"))
+_COUNTER_DIR = os.path.join(_WORKSPACE, "logs")
 _COUNTER_FILE = os.path.join(_COUNTER_DIR, "daily-quota.json")
+_STRATEGY_FILE = os.path.join(_WORKSPACE, "strategy.json")
 
-# Default limits (can be overridden by strategy.json)
-DEFAULT_LIMITS = {
-    "comment": 100,    # post-comment + reply-comment per day
-    "like": 50,        # like-feed + like-notification per day
-    "publish": 4,      # all publish types per day
-    "favorite": 50,    # favorite-feed per day
+# Safe defaults — used only when strategy.json is missing or invalid
+_SAFE_DEFAULTS = {
+    "comment": 100,
+    "like": 50,
+    "publish": 4,
+    "favorite": 50,
 }
+
+
+def _load_limits_from_strategy() -> dict:
+    """Load limits from strategy.json, mapping config fields to action keys."""
+    try:
+        with open(_STRATEGY_FILE, "r", encoding="utf-8") as f:
+            strategy = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        logger.warning("无法读取 strategy.json，使用安全默认限额")
+        return _SAFE_DEFAULTS.copy()
+
+    safety = strategy.get("safety", {})
+    schedule = strategy.get("schedule", {})
+
+    limits = {
+        "comment": safety.get("daily_comment_limit", _SAFE_DEFAULTS["comment"]),
+        "like": safety.get("daily_like_limit", _SAFE_DEFAULTS["like"]),
+        "favorite": _SAFE_DEFAULTS["favorite"],
+        "publish": schedule.get("publish_count_per_day",
+                   strategy.get("content_strategy", {}).get("publish_count_per_day",
+                   _SAFE_DEFAULTS["publish"])),
+    }
+
+    # Validate: limits must be positive integers
+    for key, val in limits.items():
+        if not isinstance(val, int) or val < 0:
+            logger.warning("strategy.json 限额无效 %s=%s，使用默认值 %d", key, val, _SAFE_DEFAULTS[key])
+            limits[key] = _SAFE_DEFAULTS[key]
+
+    return limits
+
+
+def get_limits() -> dict:
+    """Get current effective limits (from strategy.json or safe defaults)."""
+    return _load_limits_from_strategy()
+
 
 def _load_counters() -> dict:
     """Load today's counters. Reset if date changed."""
@@ -28,6 +69,7 @@ def _load_counters() -> dict:
     except (FileNotFoundError, json.JSONDecodeError):
         return {"date": today, "counts": {}}
 
+
 def _save_counters(data: dict) -> None:
     os.makedirs(_COUNTER_DIR, exist_ok=True)
     tmp = _COUNTER_FILE + ".tmp"
@@ -35,13 +77,15 @@ def _save_counters(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp, _COUNTER_FILE)
 
-def check_limit(action: str, limits: dict | None = None) -> tuple[bool, int, int]:
+
+def check_limit(action: str) -> tuple[bool, int, int]:
     """Check if action is within daily limit. Returns (allowed, current_count, limit)."""
-    limits = limits or DEFAULT_LIMITS
+    limits = _load_limits_from_strategy()
     limit = limits.get(action, 999)
     data = _load_counters()
     current = data.get("counts", {}).get(action, 0)
     return current < limit, current, limit
+
 
 def increment(action: str) -> int:
     """Increment counter for action. Returns new count."""
@@ -51,14 +95,6 @@ def increment(action: str) -> int:
     _save_counters(data)
     return counts[action]
 
-def check_and_increment(action: str, limits: dict | None = None) -> tuple[bool, int, int]:
-    """Check limit and increment if allowed. Returns (allowed, new_count, limit).
-    If not allowed, does NOT increment."""
-    allowed, current, limit = check_limit(action, limits)
-    if allowed:
-        new_count = increment(action)
-        return True, new_count, limit
-    return False, current, limit
 
 def get_status() -> dict:
     """Get all current counters and limits."""
@@ -66,5 +102,5 @@ def get_status() -> dict:
     return {
         "date": data.get("date"),
         "counts": data.get("counts", {}),
-        "limits": DEFAULT_LIMITS,
+        "limits": _load_limits_from_strategy(),
     }

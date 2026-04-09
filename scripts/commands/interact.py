@@ -105,12 +105,51 @@ def _save_reply_tracker(tracker: dict, path: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 自动记录互动（内嵌到命令处理器，不依赖 agent 调用）
+# ---------------------------------------------------------------------------
+def _auto_record_interact(feed_id: str, interact_type: str, author: str = "") -> None:
+    """自动将互动记录写入去重索引。命令处理器内部调用，不走 CLI。"""
+    from datetime import datetime, timedelta, timezone
+
+    index_path = _DEFAULT_INDEX_PATH
+    feeds_index = _load_index(index_path)
+
+    tz = timezone(timedelta(hours=8))
+    today = datetime.now(tz).date().isoformat()
+
+    if feed_id in feeds_index and isinstance(feeds_index[feed_id], dict):
+        entry = feeds_index[feed_id]
+        if interact_type not in entry.get("types", []):
+            entry.setdefault("types", []).append(interact_type)
+    else:
+        feeds_index[feed_id] = {
+            "first_interact": today,
+            "types": [interact_type],
+            "author": author,
+        }
+
+    _save_index(feeds_index, index_path)
+
+
+# ---------------------------------------------------------------------------
 # 评论 / 回复
 # ---------------------------------------------------------------------------
 def cmd_post_comment(args: argparse.Namespace) -> None:
-    """发表评论。"""
-    from rate_limiter import check_and_increment
-    allowed, count, limit = check_and_increment("comment")
+    """发表评论。内嵌去重检查 + 自动记录互动。"""
+    # 1. 去重检查（代码层强制，不依赖 agent）
+    index_path = _DEFAULT_INDEX_PATH
+    feeds_index = _load_index(index_path)
+    if args.feed_id in feeds_index:
+        output({
+            "success": False,
+            "message": f"当前用户已在帖子 {args.feed_id} 互动过，跳过重复评论",
+            "duplicate": True,
+        })
+        return
+
+    # 2. Rate limit
+    from rate_limiter import check_limit, increment
+    allowed, count, limit = check_limit("comment")
     if not allowed:
         output({"success": False, "error": f"今日评论已达上限 ({count}/{limit})"}, exit_code=2)
         return
@@ -124,18 +163,25 @@ def cmd_post_comment(args: argparse.Namespace) -> None:
             page, args.feed_id, args.xsec_token, args.content,
             xsec_source=getattr(args, "xsec_source", "pc_feed"),
         )
+        increment("comment")  # 成功后才扣 quota
         audit_log("comment", feed_id=args.feed_id)
+
+        # 3. 自动记录互动（代码层强制）
+        _auto_record_interact(args.feed_id, "comment", getattr(args, "author", ""))
+
         output({"success": True, "message": "评论发送成功"})
     except DuplicateCommentError as e:
+        # 平台侧重复检测，也记录到本地索引防止再次尝试
+        _auto_record_interact(args.feed_id, "comment", getattr(args, "author", ""))
         output({"success": False, "message": str(e), "duplicate": True})
     finally:
         browser.close()
 
 
 def cmd_reply_comment(args: argparse.Namespace) -> None:
-    """回复评论。"""
-    from rate_limiter import check_and_increment
-    allowed, count, limit = check_and_increment("comment")
+    """回复评论。内嵌 rate limit + 自动记录。"""
+    from rate_limiter import check_limit, increment
+    allowed, count, limit = check_limit("comment")
     if not allowed:
         output({"success": False, "error": f"今日评论已达上限 ({count}/{limit})"}, exit_code=2)
         return
@@ -153,6 +199,8 @@ def cmd_reply_comment(args: argparse.Namespace) -> None:
             user_id=args.user_id or "",
             xsec_source=getattr(args, "xsec_source", "pc_feed"),
         )
+        increment("comment")  # 成功后才扣
+        _auto_record_interact(args.feed_id, "comment", getattr(args, "author", ""))
         output({"success": True, "message": "回复成功"})
     finally:
         browser.close()
@@ -162,10 +210,20 @@ def cmd_reply_comment(args: argparse.Namespace) -> None:
 # 点赞 / 收藏
 # ---------------------------------------------------------------------------
 def cmd_like_feed(args: argparse.Namespace) -> None:
-    """点赞/取消点赞。"""
-    from rate_limiter import check_and_increment
-    if not getattr(args, "unlike", False):
-        allowed, count, limit = check_and_increment("like")
+    """点赞/取消点赞。内嵌去重 + 自动记录。"""
+    from rate_limiter import check_limit, increment
+
+    is_unlike = getattr(args, "unlike", False)
+
+    if not is_unlike:
+        # 去重检查
+        feeds_index = _load_index(_DEFAULT_INDEX_PATH)
+        entry = feeds_index.get(args.feed_id)
+        if isinstance(entry, dict) and "like" in entry.get("types", []):
+            output({"success": True, "message": "已点赞过，跳过", "already": True})
+            return
+
+        allowed, count, limit = check_limit("like")
         if not allowed:
             output({"success": False, "error": f"今日点赞已达上限 ({count}/{limit})"}, exit_code=2)
             return
@@ -175,21 +233,33 @@ def cmd_like_feed(args: argparse.Namespace) -> None:
     browser, page = connect(args)
     try:
         xsec_source = getattr(args, "xsec_source", "pc_feed")
-        if args.unlike:
+        if is_unlike:
             result = unlike_feed(page, args.feed_id, args.xsec_token, xsec_source)
         else:
             result = like_feed(page, args.feed_id, args.xsec_token, xsec_source)
+            increment("like")  # 成功后才扣
             audit_log("like", feed_id=args.feed_id)
+            _auto_record_interact(args.feed_id, "like", getattr(args, "author", ""))
         output(result.to_dict())
     finally:
         browser.close()
 
 
 def cmd_favorite_feed(args: argparse.Namespace) -> None:
-    """收藏/取消收藏。"""
-    from rate_limiter import check_and_increment
-    if not getattr(args, "unfavorite", False):
-        allowed, count, limit = check_and_increment("favorite")
+    """收藏/取消收藏。内嵌去重 + 自动记录。"""
+    from rate_limiter import check_limit, increment
+
+    is_unfavorite = getattr(args, "unfavorite", False)
+
+    if not is_unfavorite:
+        # 去重检查
+        feeds_index = _load_index(_DEFAULT_INDEX_PATH)
+        entry = feeds_index.get(args.feed_id)
+        if isinstance(entry, dict) and "favorite" in entry.get("types", []):
+            output({"success": True, "message": "已收藏过，跳过", "already": True})
+            return
+
+        allowed, count, limit = check_limit("favorite")
         if not allowed:
             output({"success": False, "error": f"今日收藏已达上限 ({count}/{limit})"}, exit_code=2)
             return
@@ -199,10 +269,12 @@ def cmd_favorite_feed(args: argparse.Namespace) -> None:
     browser, page = connect(args)
     try:
         xsec_source = getattr(args, "xsec_source", "pc_feed")
-        if args.unfavorite:
+        if is_unfavorite:
             result = unfavorite_feed(page, args.feed_id, args.xsec_token, xsec_source)
         else:
             result = favorite_feed(page, args.feed_id, args.xsec_token, xsec_source)
+            increment("favorite")  # 成功后才扣
+            _auto_record_interact(args.feed_id, "favorite", getattr(args, "author", ""))
         output(result.to_dict())
     finally:
         browser.close()
@@ -229,12 +301,16 @@ def cmd_list_notifications(args: argparse.Namespace) -> None:
 
 
 def cmd_reply_notification(args: argparse.Namespace) -> None:
-    """在通知页面直接回复评论。"""
+    """在通知页面直接回复评论。内嵌去重 + 自动记录。"""
+    from datetime import datetime, timedelta, timezone
     from xhs.notification import list_notifications, reply_notification
+
+    # 先检查通知 ID 是否已回复过（防止重复回复）
+    notification_id = getattr(args, "notification_id", "") or ""
 
     browser, page = connect(args)
     try:
-        # 先获取通知列表（同时导航到通知页面）
+        # 每次都重新获取通知列表（防止 index 偏移 — lp-013）
         items = list_notifications(page, tab="mentions")
 
         index = args.index
@@ -244,11 +320,32 @@ def cmd_reply_notification(args: argparse.Namespace) -> None:
 
         item = items[index]
 
+        # 去重：检查该通知是否已在今日日志中
+        tz = timezone(timedelta(hours=8))
+        today = datetime.now(tz).date().isoformat()
+        log_file = os.path.join(_DEFAULT_LOG_DIR, f"notification-{today}.json")
+        try:
+            with open(log_file, encoding="utf-8") as f:
+                log_data = json.load(f)
+            if item.id in log_data.get("replied_ids", []):
+                output({
+                    "success": False,
+                    "message": f"通知 {item.id} 已回复过，跳过",
+                    "duplicate": True,
+                })
+                return
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
         # 在通知页面直接回复
         reply_notification(page, index, args.content)
 
-        # 自动写入通知日志（使 check-interacted --notification-ids 能查到）
+        # 自动写入通知日志
         _append_notification_log(item.id)
+
+        # 自动记录到互动索引（如果有 note_id）
+        if item.note_id:
+            _auto_record_interact(item.note_id, "comment", item.user.nickname)
 
         output({
             "success": True,
@@ -264,8 +361,8 @@ def cmd_reply_notification(args: argparse.Namespace) -> None:
 
 def cmd_like_notification(args: argparse.Namespace) -> None:
     """在通知页面点赞评论。"""
-    from rate_limiter import check_and_increment
-    allowed, count, limit = check_and_increment("like")
+    from rate_limiter import check_limit, increment
+    allowed, count, limit = check_limit("like")
     if not allowed:
         output({"success": False, "error": f"今日点赞已达上限 ({count}/{limit})"}, exit_code=2)
         return
@@ -286,6 +383,7 @@ def cmd_like_notification(args: argparse.Namespace) -> None:
 
         # 记录到通知日志（防止重复处理）
         if liked:
+            increment("like")  # 成功后才扣
             _append_notification_log(item.id)
 
         output({

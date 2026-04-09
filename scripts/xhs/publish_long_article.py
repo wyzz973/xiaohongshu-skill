@@ -437,8 +437,8 @@ def _input_tags_via_topic_button(
 ) -> None:
     """在描述框中输入 #tag 触发联想弹窗添加标签（长文发布页专用）。
 
-    在描述框末尾慢速输入 #标签名 并等待联想弹窗，点击联想结果。
-    关键：必须先明确聚焦描述框（非标题框），且每字间隔足够长。
+    对齐图文 publish.py 的 tag 输入逻辑：更快的输入速度 + 更轻的聚焦操作 +
+    失败重试机制，解决长文 tag 打不上的问题。
     """
     from .publish import _sample_tags
     from .selectors import TAG_FIRST_ITEM, TAG_TOPIC_CONTAINER
@@ -447,13 +447,9 @@ def _input_tags_via_topic_button(
     if not tags:
         return
 
-    # 过滤含空格的标签（XHS 话题不支持空格，输入会导致编辑器异常）
     clean_tags = []
     for t in tags:
         t = t.strip().lstrip("#")
-        if " " in t:
-            logger.warning("标签含空格已跳过: %s", t)
-            continue
         if t:
             clean_tags.append(t)
     tags = clean_tags
@@ -481,45 +477,118 @@ def _input_tags_via_topic_button(
     for tag in tags:
         tag = tag.lstrip("#")
 
-        # 重新确保焦点在描述框（防止被联想弹窗切走）
-        page.click_element(content_selector)
-        time.sleep(0.3)
-        for _ in range(20):
-            page.press_key("ArrowDown")
-            time.sleep(0.01)
-        page.press_key("End")
-        time.sleep(0.2)
+        ok = _input_single_tag_long(page, content_selector, tag, TAG_TOPIC_CONTAINER, TAG_FIRST_ITEM)
+        if ok:
+            added += 1
+        else:
+            # 第一次失败，重试一次（清除残留文本后重试）
+            logger.info("标签 '%s' 第一次失败，重试中...", tag)
+            # 用 Backspace 清除已输入的残留文本（输入长度=去空格后+1个#）
+            input_len = len(tag.replace(" ", "")) + 1  # +1 for #
+            for _ in range(input_len + 2):
+                page.press_key("Backspace")
+                time.sleep(0.02)
+            time.sleep(0.3)
+            ok = _input_single_tag_long(page, content_selector, tag, TAG_TOPIC_CONTAINER, TAG_FIRST_ITEM)
+            if ok:
+                added += 1
+            else:
+                logger.warning("未找到标签联想（重试后仍失败）: %s", tag)
+                # 清理第二次残留文本
+                input_len = len(tag.replace(" ", "")) + 1
+                for _ in range(input_len + 2):
+                    page.press_key("Backspace")
+                    time.sleep(0.02)
 
-        # 输入 # 触发联想
-        page.type_text("#", delay_ms=0)
-        time.sleep(1.0)
-
-        # 慢速逐字输入标签名（每字 250-400ms）
-        for char in tag:
-            page.type_text(char, delay_ms=0)
-            time.sleep(random.uniform(0.25, 0.40))
-
-        # 等待联想弹窗出现（最多 5 秒）
-        deadline = time.monotonic() + 5.0
-        clicked = False
-        while time.monotonic() < deadline:
-            time.sleep(0.5)
-            if page.has_element(TAG_TOPIC_CONTAINER):
-                item_selector = f"{TAG_TOPIC_CONTAINER} {TAG_FIRST_ITEM}"
-                if page.has_element(item_selector):
-                    page.click_element(item_selector)
-                    logger.info("点击标签联想: %s", tag)
-                    clicked = True
-                    added += 1
-                    break
-
-        if not clicked:
-            logger.warning("未找到标签联想: %s", tag)
-            page.type_text(" ", delay_ms=0)
-
-        time.sleep(random.uniform(0.8, 1.2))
+        time.sleep(random.uniform(0.5, 0.8))
 
     logger.info("共添加 %d/%d 个标签", added, len(tags))
+
+
+def _input_single_tag_long(
+    page: Page,
+    content_selector: str,
+    tag: str,
+    topic_container: str,
+    first_item: str,
+) -> bool:
+    """长文单个 tag 输入，对齐图文 publish.py 的速度和逻辑。
+
+    关键改进：遍历所有联想项，优先点击文本匹配的结果，
+    避免盲点第一个联想导致 tag 打错。
+    """
+    # 轻量聚焦：只 click 描述框（不再 20 次 ArrowDown）
+    page.click_element(content_selector)
+    time.sleep(0.2)
+    page.press_key("End")
+    time.sleep(0.1)
+
+    # 输入 # 触发联想（对齐图文：300ms 等待）
+    page.type_text("#", delay_ms=0)
+    time.sleep(0.3)
+
+    # 逐字输入（对齐图文速度：50-120ms/字）
+    # 含空格的标签（如 "Claude Code"）去掉空格输入，避免空格关闭联想弹窗
+    input_text = tag.replace(" ", "")
+    for char in input_text:
+        page.type_text(char, delay_ms=0)
+        time.sleep(random.uniform(0.05, 0.12))
+
+    # 等待联想弹窗并匹配文本（最多 4 秒，每 0.3 秒检查）
+    # 匹配时忽略空格，这样 "ClaudeCode" 输入能匹配到 "Claude Code" 联想项
+    tag_lower = tag.lower().replace(" ", "")
+    deadline = time.monotonic() + 4.0
+    while time.monotonic() < deadline:
+        time.sleep(0.3)
+        if not page.has_element(topic_container):
+            continue
+
+        # 遍历所有联想项，优先精确匹配，其次包含匹配
+        clicked_tag = page.evaluate(
+            f"""
+            (() => {{
+                const container = document.querySelector({json.dumps(topic_container)});
+                if (!container) return null;
+                const items = container.querySelectorAll('.item');
+                if (!items.length) return null;
+
+                const target = {json.dumps(tag_lower)};
+                let bestMatch = null;
+
+                for (const item of items) {{
+                    const rawText = (item.textContent || '').trim().replace(/^#/, '');
+                    const text = rawText.toLowerCase().replace(/\s+/g, '');
+                    if (text === target) {{
+                        item.click();
+                        return rawText;
+                    }}
+                    if (!bestMatch && text.includes(target)) {{
+                        bestMatch = item;
+                    }}
+                }}
+
+                // 没有精确匹配，用包含匹配
+                if (bestMatch) {{
+                    bestMatch.click();
+                    return (bestMatch.textContent || '').trim().replace(/^#/, '');
+                }}
+
+                // 都没有，点第一个
+                items[0].click();
+                return (items[0].textContent || '').trim().replace(/^#/, '');
+            }})()
+            """
+        )
+        if clicked_tag is not None:
+            if clicked_tag.lower() == tag_lower:
+                logger.info("点击标签联想(精确): %s", tag)
+            elif tag_lower in clicked_tag.lower():
+                logger.info("点击标签联想(包含): %s → %s", tag, clicked_tag)
+            else:
+                logger.warning("标签联想不匹配: 期望 '%s', 实际点击 '%s'", tag, clicked_tag)
+            return True
+
+    return False
 
 
 def _click_button_by_text(page: Page, text: str) -> None:
