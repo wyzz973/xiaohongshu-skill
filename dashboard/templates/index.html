@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XHS 运营中心</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['"JetBrains Mono"', '"Fira Code"', 'Menlo', 'monospace'],
+            sans: ['"Inter"', '"Noto Sans SC"', 'system-ui', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    [x-cloak] { display: none !important; }
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #475569; }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    .timeline-line { position: relative; }
+    .timeline-line::before {
+      content: '';
+      position: absolute;
+      left: 15px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #334155;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans antialiased" x-cloak
+  x-data="app()" x-init="init()">
+
+  <!-- Toast Notifications -->
+  <div class="fixed bottom-6 right-6 z-50 flex flex-col gap-3" >
+    <template x-for="(toast, i) in toasts" :key="i">
+      <div x-show="toast.visible"
+           x-transition:enter="transition ease-out duration-300"
+           x-transition:enter-start="opacity-0 translate-y-2"
+           x-transition:enter-end="opacity-100 translate-y-0"
+           x-transition:leave="transition ease-in duration-200"
+           x-transition:leave-start="opacity-100 translate-y-0"
+           x-transition:leave-end="opacity-0 translate-y-2"
+           class="px-4 py-3 rounded-lg shadow-lg border max-w-sm font-medium text-sm"
+           :class="{
+             'bg-red-900/80 border-red-700 text-red-200': toast.type === 'error',
+             'bg-green-900/80 border-green-700 text-green-200': toast.type === 'success',
+             'bg-yellow-900/80 border-yellow-700 text-yellow-200': toast.type === 'warning',
+             'bg-slate-800 border-slate-600 text-slate-200': toast.type === 'info',
+           }">
+        <span x-text="toast.message"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- App Shell -->
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside class="w-56 flex-shrink-0 bg-slate-800/50 border-r border-slate-700/50 flex flex-col">
+      <!-- Logo -->
+      <div class="h-16 flex items-center px-5 border-b border-slate-700/50">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center">
+            <svg class="w-4.5 h-4.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+          </div>
+          <span class="font-semibold text-base text-white tracking-tight">XHS 运营中心</span>
+        </div>
+      </div>
+
+      <!-- Nav -->
+      <nav class="flex-1 py-4 px-3 space-y-1">
+        <template x-for="item in navItems" :key="item.id">
+          <button @click="currentView = item.id"
+                  class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150"
+                  :class="currentView === item.id
+                    ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/20'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent'">
+            <span class="w-5 h-5 flex items-center justify-center" x-html="item.icon"></span>
+            <span x-text="item.label"></span>
+          </button>
+        </template>
+      </nav>
+
+      <!-- Sidebar Footer -->
+      <div class="p-4 border-t border-slate-700/50">
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <div class="w-2 h-2 rounded-full" :class="status.logged_in ? 'bg-green-400' : 'bg-red-400'"></div>
+          <span x-text="status.logged_in ? (status.account || '已登录') : '未登录'"></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- Top Bar -->
+      <header class="h-16 flex-shrink-0 bg-slate-800/30 border-b border-slate-700/50 flex items-center justify-between px-6">
+        <div class="flex items-center gap-4">
+          <h1 class="text-lg font-semibold text-slate-100" x-text="navItems.find(n => n.id === currentView)?.label || '看板'"></h1>
+        </div>
+        <div class="flex items-center gap-4">
+          <!-- Current Time -->
+          <div class="flex items-center gap-2 text-sm text-slate-400 font-mono">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span x-text="currentTime"></span>
+          </div>
+          <!-- Login Status -->
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm"
+               :class="status.logged_in ? 'border-green-800 bg-green-900/20 text-green-400' : 'border-red-800 bg-red-900/20 text-red-400'">
+            <div class="w-2 h-2 rounded-full" :class="status.logged_in ? 'bg-green-400' : 'bg-red-400'"></div>
+            <span x-text="status.logged_in ? '已登录' : '未登录'"></span>
+          </div>
+          <!-- Refresh -->
+          <button @click="refreshAll()"
+                  class="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors"
+                  :class="{ 'animate-spin': refreshing }">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <main class="flex-1 overflow-y-auto p-6 scrollbar-thin">
+
+        <!-- ==================== DASHBOARD ==================== -->
+        <div x-show="currentView === 'dashboard'" x-transition>
+
+          <!-- Status Cards -->
+          <div class="grid grid-cols-3 gap-5 mb-8">
+            <!-- Login Status Card -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-sm text-slate-400 font-medium">登录状态</span>
+                <div class="w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full" :class="status.logged_in ? 'bg-green-400 shadow-lg shadow-green-400/30' : 'bg-red-400 shadow-lg shadow-red-400/30'"></div>
+                <span class="text-xl font-semibold" :class="status.logged_in ? 'text-green-400' : 'text-red-400'"
+                      x-text="status.logged_in ? '已登录' : '未登录'"></span>
+              </div>
+              <p class="text-xs text-slate-500 mt-2" x-text="status.account || '---'"></p>
+            </div>
+
+            <!-- Today Published Card -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-sm text-slate-400 font-medium">今日发布</span>
+                <div class="w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </div>
+              </div>
+              <div class="flex items-baseline gap-1">
+                <span class="text-3xl font-bold text-white" x-text="todayPublished"></span>
+                <span class="text-sm text-slate-500">篇</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-2" x-text="todayDateStr"></p>
+            </div>
+
+            <!-- Today Interactions Card -->
+            <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-sm text-slate-400 font-medium">今日互动</span>
+                <div class="w-8 h-8 rounded-lg bg-slate-700/50 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+              </div>
+              <div class="flex items-baseline gap-1">
+                <span class="text-3xl font-bold text-white" x-text="todayInteractions"></span>
+                <span class="text-sm text-slate-500">次</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-2">评论、点赞、收藏</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-5 gap-6">
+            <!-- Timeline -->
+            <div class="col-span-3">
+              <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+                <h3 class="text-sm font-semibold text-slate-300 mb-5 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  今日时间线
+                </h3>
+                <div class="space-y-0 timeline-line" x-show="timeline.length > 0">
+                  <template x-for="(item, idx) in timeline" :key="idx">
+                    <div class="relative pl-10 pb-6 last:pb-0">
+                      <!-- Node dot -->
+                      <div class="absolute left-2 top-1 w-[10px] h-[10px] rounded-full border-2 z-10"
+                           :class="{
+                             'border-slate-500 bg-slate-800': item.status === 'pending',
+                             'border-indigo-400 bg-indigo-400 animate-pulse': item.status === 'running',
+                             'border-green-400 bg-green-400': item.status === 'done',
+                             'border-red-400 bg-red-400': item.status === 'failed',
+                           }"></div>
+                      <div class="flex items-start justify-between">
+                        <div>
+                          <span class="text-xs font-mono text-slate-500" x-text="item.time"></span>
+                          <p class="text-sm text-slate-200 mt-0.5" x-text="item.name"></p>
+                        </div>
+                        <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                              :class="{
+                                'bg-slate-700 text-slate-400': item.status === 'pending',
+                                'bg-indigo-500/20 text-indigo-400': item.status === 'running',
+                                'bg-green-500/20 text-green-400': item.status === 'done',
+                                'bg-red-500/20 text-red-400': item.status === 'failed',
+                              }"
+                              x-text="statusLabel(item.status)"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <div x-show="timeline.length === 0" class="text-center py-10 text-slate-500 text-sm">
+                  暂无计划任务
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="col-span-2">
+              <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+                <h3 class="text-sm font-semibold text-slate-300 mb-5 flex items-center gap-2">
+                  <svg class="w-4 h-4 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/></svg>
+                  最近活动
+                </h3>
+                <div class="space-y-3" x-show="recentActivity.length > 0">
+                  <template x-for="(entry, idx) in recentActivity.slice(0, 10)" :key="idx">
+                    <div class="flex items-start gap-3 py-2 border-b border-slate-700/30 last:border-0">
+                      <div class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0"
+                           :class="{
+                             'bg-green-400': entry.level === 'success',
+                             'bg-red-400': entry.level === 'error',
+                             'bg-yellow-400': entry.level === 'warning',
+                             'bg-slate-500': entry.level === 'info',
+                           }"></div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm text-slate-300 truncate" x-text="entry.message"></p>
+                        <span class="text-xs text-slate-600 font-mono" x-text="entry.time"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <div x-show="recentActivity.length === 0" class="text-center py-10 text-slate-500 text-sm">
+                  暂无活动记录
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== TASKS ==================== -->
+        <div x-show="currentView === 'tasks'" x-transition>
+
+          <!-- Header -->
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <p class="text-sm text-slate-400">管理自动运营任务</p>
+            </div>
+            <button @click="openCreateTaskModal()"
+                    class="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-lg transition-colors">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              新建任务
+            </button>
+          </div>
+
+          <!-- Task Grid -->
+          <div class="grid grid-cols-2 gap-4" x-show="tasks.length > 0">
+            <template x-for="task in tasks" :key="task.id">
+              <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5 hover:border-slate-600/50 transition-colors">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="flex items-center gap-2.5">
+                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/20"
+                          x-text="'P' + task.phase"></span>
+                    <h4 class="font-medium text-slate-100" x-text="task.name"></h4>
+                  </div>
+                  <!-- Status: running shows pulse, otherwise show schedule status -->
+                  <span x-show="task.status === 'running'"
+                        class="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-500/20 text-indigo-400 animate-pulse">
+                    执行中
+                  </span>
+                  <span x-show="task.status !== 'running'"
+                        class="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-700 text-slate-400">
+                    待执行
+                  </span>
+                </div>
+
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-xs font-mono text-slate-500" x-text="task.cron_expr"></span>
+                  <span class="text-xs text-slate-600">|</span>
+                  <span class="text-xs text-slate-400" x-text="cronToHuman(task.cron_expr)"></span>
+                </div>
+
+                <!-- Last run info -->
+                <div x-show="task.last_run" class="flex items-center gap-2 mb-3 text-xs">
+                  <span class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        :class="task.last_result && task.last_result.includes('成功') ? 'bg-green-400' : task.status === 'failed' ? 'bg-red-400' : 'bg-green-400'"></span>
+                  <span class="text-slate-500">
+                    上次 <span class="text-slate-400" x-text="task.last_run ? task.last_run.substring(11, 16) : ''"></span>
+                    <span x-show="task.last_duration" class="text-slate-600" x-text="task.last_duration ? ' (' + Math.round(task.last_duration) + 's)' : ''"></span>
+                  </span>
+                </div>
+
+                <p class="text-xs text-slate-500 mb-4 line-clamp-2" x-text="task.prompt || '---'" x-show="task.prompt"></p>
+
+                <!-- Actions -->
+                <div class="flex items-center justify-between pt-3 border-t border-slate-700/30">
+                  <div class="flex items-center gap-1.5">
+                    <!-- Run -->
+                    <button @click="runTask(task.id)" x-show="task.status !== 'running'"
+                            class="p-1.5 rounded-md text-slate-500 hover:text-green-400 hover:bg-green-500/10 transition-colors" title="运行">
+                      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    </button>
+                    <!-- Stop -->
+                    <button @click="stopTask(task.id)" x-show="task.status === 'running'"
+                            class="p-1.5 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors" title="停止">
+                      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                    </button>
+                    <!-- Edit -->
+                    <button @click="openEditTaskModal(task)"
+                            class="p-1.5 rounded-md text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors" title="编辑">
+                      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <!-- Delete -->
+                    <button @click="confirmDeleteTask(task)"
+                            class="p-1.5 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors" title="删除">
+                      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                    <!-- View Logs -->
+                    <button @click="currentView = 'logs'; logTaskFilter = task.id" x-show="task.status === 'running'"
+                            class="ml-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                      查看日志
+                    </button>
+                  </div>
+                  <!-- Enable/Disable Toggle -->
+                  <button @click="toggleTask(task)"
+                          class="relative w-9 h-5 rounded-full transition-colors duration-200"
+                          :class="task.enabled ? 'bg-indigo-500' : 'bg-slate-600'">
+                    <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 shadow-sm"
+                          :class="task.enabled ? 'translate-x-4' : ''"></span>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Empty State -->
+          <div x-show="tasks.length === 0" class="text-center py-20">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-800 border border-slate-700/50 flex items-center justify-center">
+              <svg class="w-8 h-8 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+            </div>
+            <p class="text-slate-500 text-sm">暂无任务，点击右上角创建</p>
+          </div>
+        </div>
+
+        <!-- ==================== SCHEDULE ==================== -->
+        <div x-show="currentView === 'schedule'" x-transition>
+
+          <!-- 24h Timeline Bar -->
+          <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5 mb-6">
+            <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+              <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              24 小时时间轴
+            </h3>
+            <div class="relative bg-slate-900 rounded-lg overflow-hidden border border-slate-700/30" :style="'height:' + Math.max(80, 28 + scheduledTasks.length * 24 + 8) + 'px'">
+              <!-- Active window highlight 00:00-09:00 -->
+              <div class="absolute top-0 bottom-0 left-0 bg-indigo-500/5 border-r border-indigo-500/20"
+                   :style="'width:' + currentTimePercent() + '%'"></div>
+              <!-- Hour markers -->
+              <template x-for="h in 24" :key="h">
+                <div class="absolute top-0 bottom-0 border-l border-slate-700/30"
+                     :style="'left:' + ((h)/24*100) + '%'">
+                  <span class="absolute -top-0 left-1 text-[10px] font-mono text-slate-600"
+                        x-text="String(h).padStart(2,'0') + ':00'"
+                        x-show="h % 3 === 0"></span>
+                </div>
+              </template>
+              <!-- Task blocks -->
+              <template x-for="(task, idx) in scheduledTasks" :key="idx">
+                <div class="absolute h-5 rounded px-1.5 flex items-center text-[10px] font-medium truncate cursor-default"
+                     :class="[
+                       ['bg-indigo-500/30 text-indigo-300 border border-indigo-500/30',
+                        'bg-violet-500/30 text-violet-300 border border-violet-500/30',
+                        'bg-cyan-500/30 text-cyan-300 border border-cyan-500/30',
+                        'bg-amber-500/30 text-amber-300 border border-amber-500/30',
+                        'bg-emerald-500/30 text-emerald-300 border border-emerald-500/30',
+                        'bg-rose-500/30 text-rose-300 border border-rose-500/30',
+                        'bg-sky-500/30 text-sky-300 border border-sky-500/30',
+                       ][idx % 7]
+                     ]"
+                     :style="'top:' + (24 + idx * 22) + 'px; left:' + taskTimePercent(task.cron_expr) + '%; min-width: 60px; max-width: 120px;'"
+                     :title="task.name + ' - ' + task.cron_expr + ' (' + cronToHuman(task.cron_expr) + ')'"
+                     x-text="task.name">
+                </div>
+              </template>
+              <!-- Task time dots on the top bar -->
+              <template x-for="(task, idx) in scheduledTasks" :key="'dot-'+idx">
+                <div class="absolute top-1 w-3 h-3 rounded-full z-20 border-2 border-slate-900"
+                     :class="[
+                       ['bg-indigo-400', 'bg-violet-400', 'bg-cyan-400', 'bg-amber-400', 'bg-emerald-400', 'bg-rose-400', 'bg-sky-400'][idx % 7]
+                     ]"
+                     :style="'left: calc(' + taskTimePercent(task.cron_expr) + '% - 6px)'"
+                     :title="task.name + ' ' + cronToHuman(task.cron_expr)">
+                </div>
+              </template>
+              <!-- Current time line -->
+              <div class="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
+                   :style="'left:' + currentTimePercent() + '%'">
+                <div class="absolute -top-0 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cron Table -->
+          <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-sm font-semibold text-slate-300">调度配置</h3>
+              <button @click="syncSchedule()"
+                      class="flex items-center gap-2 px-3 py-1.5 bg-violet-500/15 text-violet-400 border border-violet-500/20 hover:bg-violet-500/25 text-sm font-medium rounded-lg transition-colors">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                同步到系统
+              </button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-slate-700/50">
+                    <th class="text-left py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">任务名称</th>
+                    <th class="text-left py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Cron 表达式</th>
+                    <th class="text-left py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">调度说明</th>
+                    <th class="text-left py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">状态</th>
+                    <th class="text-right py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="task in tasks.filter(t => t.enabled)" :key="task.id">
+                    <tr class="border-b border-slate-700/20 hover:bg-slate-700/20 transition-colors">
+                      <td class="py-3 px-3 text-slate-200" x-text="task.name"></td>
+                      <td class="py-3 px-3 font-mono text-xs text-slate-400" x-text="task.cron_expr"></td>
+                      <td class="py-3 px-3 text-slate-400" x-text="cronToHuman(task.cron_expr)"></td>
+                      <td class="py-3 px-3">
+                        <div class="flex items-center gap-2">
+                          <span x-show="task.status === 'running'" class="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-500/20 text-indigo-400 animate-pulse">执行中</span>
+                          <span x-show="task.status !== 'running'" class="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-700 text-slate-400">待执行</span>
+                          <span x-show="task.last_run" class="text-xs text-slate-500" x-text="task.last_run ? '上次 ' + task.last_run.substring(11,16) : ''"></span>
+                        </div>
+                      </td>
+                      <td class="py-3 px-3 text-right">
+                        <button @click="runTask(task.id)" class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+                          立即运行
+                        </button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div x-show="tasks.filter(t => t.enabled).length === 0" class="text-center py-8 text-slate-500 text-sm">
+              暂无已启用的调度任务
+            </div>
+          </div>
+
+          <!-- Current Crontab -->
+          <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+            <h3 class="text-sm font-semibold text-slate-300 mb-4">当前系统 Crontab</h3>
+            <pre class="bg-slate-950 rounded-lg p-4 text-xs font-mono text-slate-400 overflow-x-auto border border-slate-700/30"
+                 x-text="crontab || '# 暂无 crontab 配置'"></pre>
+          </div>
+        </div>
+
+        <!-- ==================== LOGS ==================== -->
+        <div x-show="currentView === 'logs'" x-transition>
+
+          <!-- Controls -->
+          <div class="flex items-center gap-4 mb-6">
+            <!-- Date Picker -->
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-slate-400">日期</label>
+              <input type="date" x-model="logDate" @change="fetchLogs()"
+                     class="bg-slate-800 border border-slate-700/50 rounded-lg px-3 py-1.5 text-sm text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50">
+            </div>
+            <!-- Task Filter -->
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-slate-400">任务</label>
+              <select x-model="logTaskFilter" @change="fetchLogs()"
+                      class="bg-slate-800 border border-slate-700/50 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50">
+                <option value="">全部任务</option>
+                <template x-for="task in tasks" :key="task.id">
+                  <option :value="task.id" x-text="task.name"></option>
+                </template>
+              </select>
+            </div>
+            <!-- Live Tracking -->
+            <div class="flex items-center gap-2 ml-auto">
+              <label class="text-sm text-slate-400">实时跟踪</label>
+              <button @click="liveTracking = !liveTracking"
+                      class="relative w-9 h-5 rounded-full transition-colors duration-200"
+                      :class="liveTracking ? 'bg-green-500' : 'bg-slate-600'">
+                <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 shadow-sm"
+                      :class="liveTracking ? 'translate-x-4' : ''"></span>
+              </button>
+              <span x-show="liveTracking" class="text-xs text-green-400 animate-pulse">LIVE</span>
+            </div>
+          </div>
+
+          <!-- Log Tabs -->
+          <div class="flex items-center gap-1 mb-4 border-b border-slate-700/50">
+            <template x-for="tab in logTabs" :key="tab.id">
+              <button @click="logActiveTab = tab.id; fetchLogs()"
+                      class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
+                      :class="logActiveTab === tab.id
+                        ? 'border-indigo-500 text-indigo-400'
+                        : 'border-transparent text-slate-500 hover:text-slate-300'">
+                <span x-text="tab.label"></span>
+              </button>
+            </template>
+          </div>
+
+          <!-- Log Viewer -->
+          <div class="bg-slate-950 rounded-xl border border-slate-700/30 overflow-hidden">
+            <div class="h-[500px] overflow-y-auto p-4 scrollbar-thin font-mono text-xs leading-6" id="log-viewer"
+                 x-ref="logViewer">
+              <template x-for="(line, idx) in logs" :key="idx">
+                <div class="flex gap-3 hover:bg-slate-800/30 px-2 -mx-2 rounded"
+                     :class="{
+                       'text-slate-400': line.level === 'info',
+                       'text-green-400': line.level === 'success',
+                       'text-red-400': line.level === 'error',
+                       'text-yellow-400': line.level === 'warning',
+                     }">
+                  <span class="text-slate-600 select-none flex-shrink-0" x-text="String(idx + 1).padStart(4, ' ')"></span>
+                  <span class="text-slate-600 flex-shrink-0" x-text="line.time || ''"></span>
+                  <span x-text="line.message" class="break-all"></span>
+                </div>
+              </template>
+              <div x-show="logs.length === 0" class="text-slate-600 text-center py-20">
+                暂无日志记录
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== ANALYTICS ==================== -->
+        <div x-show="currentView === 'analytics'" x-transition>
+
+          <!-- Stats Cards -->
+          <div class="grid grid-cols-3 gap-5 mb-8">
+            <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+              <span class="text-sm text-slate-400 font-medium">总发布</span>
+              <div class="flex items-baseline gap-1 mt-2">
+                <span class="text-3xl font-bold text-white" x-text="analyticsData.totalPublished ?? 0"></span>
+                <span class="text-sm text-slate-500">篇</span>
+              </div>
+            </div>
+            <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+              <span class="text-sm text-slate-400 font-medium">总互动</span>
+              <div class="flex items-baseline gap-1 mt-2">
+                <span class="text-3xl font-bold text-white" x-text="analyticsData.totalInteractions ?? 0"></span>
+                <span class="text-sm text-slate-500">次</span>
+              </div>
+            </div>
+            <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5">
+              <span class="text-sm text-slate-400 font-medium">最近 7 天发布</span>
+              <div class="flex items-baseline gap-1 mt-2">
+                <span class="text-3xl font-bold text-white" x-text="analyticsData.last7DaysPublished ?? 0"></span>
+                <span class="text-sm text-slate-500">篇</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Published Notes Table -->
+          <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5 mb-6">
+            <h3 class="text-sm font-semibold text-slate-300 mb-4">已发布笔记</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-slate-700/50">
+                    <th class="text-left py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">日期</th>
+                    <th class="text-left py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">标题</th>
+                    <th class="text-left py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">类型</th>
+                    <th class="text-left py-2.5 px-3 text-xs font-medium text-slate-500 uppercase tracking-wider">状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="note in published" :key="note.id || note.title">
+                    <tr class="border-b border-slate-700/20 hover:bg-slate-700/20 transition-colors">
+                      <td class="py-3 px-3 font-mono text-xs text-slate-400" x-text="note.date"></td>
+                      <td class="py-3 px-3 text-slate-200" x-text="note.title"></td>
+                      <td class="py-3 px-3">
+                        <span class="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300" x-text="note.type || '图文'"></span>
+                      </td>
+                      <td class="py-3 px-3">
+                        <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+                              :class="{
+                                'bg-green-500/20 text-green-400': note.status === 'published' || note.status === 'success',
+                                'bg-yellow-500/20 text-yellow-400': note.status === 'pending',
+                                'bg-red-500/20 text-red-400': note.status === 'failed',
+                              }"
+                              x-text="note.status === 'published' || note.status === 'success' ? '已发布' : note.status === 'pending' ? '待发布' : note.status || '已发布'"></span>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div x-show="published.length === 0" class="text-center py-8 text-slate-500 text-sm">
+              暂无发布记录
+            </div>
+          </div>
+
+          <!-- Analytics Data -->
+          <div class="bg-slate-800 rounded-xl border border-slate-700/50 p-5" x-show="analyticsData.daily && analyticsData.daily.length > 0">
+            <h3 class="text-sm font-semibold text-slate-300 mb-4">每日数据</h3>
+            <div class="grid grid-cols-1 gap-3">
+              <template x-for="day in analyticsData.daily || []" :key="day.date">
+                <div class="flex items-center gap-4 py-3 px-4 bg-slate-900/50 rounded-lg border border-slate-700/20">
+                  <span class="font-mono text-sm text-slate-400 w-28" x-text="day.date"></span>
+                  <div class="flex items-center gap-6 flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-slate-500">发布</span>
+                      <span class="font-mono text-sm font-medium text-slate-200" x-text="day.published ?? 0"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-slate-500">点赞</span>
+                      <span class="font-mono text-sm font-medium text-slate-200" x-text="day.likes ?? 0"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-slate-500">收藏</span>
+                      <span class="font-mono text-sm font-medium text-slate-200" x-text="day.collects ?? 0"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-slate-500">评论</span>
+                      <span class="font-mono text-sm font-medium text-slate-200" x-text="day.comments ?? 0"></span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- Create / Edit Task Modal -->
+  <div x-show="showTaskModal" class="fixed inset-0 z-50 flex items-center justify-center" x-transition>
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showTaskModal = false"></div>
+    <div class="relative bg-slate-800 rounded-2xl border border-slate-700/50 shadow-2xl w-full max-w-3xl mx-4 overflow-hidden max-h-[90vh] overflow-y-auto"
+         @click.stop>
+      <div class="px-6 py-5 border-b border-slate-700/50">
+        <h3 class="text-lg font-semibold text-slate-100" x-text="editingTask ? '编辑任务' : '新建任务'"></h3>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <!-- Name -->
+        <div>
+          <label class="block text-sm font-medium text-slate-400 mb-1.5">任务名称</label>
+          <input type="text" x-model="taskForm.name" placeholder="例如：自动发布笔记"
+                 class="w-full bg-slate-900 border border-slate-700/50 rounded-lg px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50">
+        </div>
+        <!-- Phase -->
+        <div>
+          <label class="block text-sm font-medium text-slate-400 mb-1.5">Phase 阶段</label>
+          <select x-model="taskForm.phase"
+                  class="w-full bg-slate-900 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50">
+            <option value="1">Phase 1 - 登录检查</option>
+            <option value="2">Phase 2 - 通知处理</option>
+            <option value="3">Phase 3 - 选题策划</option>
+            <option value="4">Phase 4 - 内容生产</option>
+            <option value="5">Phase 5 - 发布</option>
+            <option value="6">Phase 6 - 互动巡逻</option>
+            <option value="7">Phase 7 - 数据复盘</option>
+          </select>
+        </div>
+        <!-- Cron -->
+        <div>
+          <label class="block text-sm font-medium text-slate-400 mb-1.5">Cron 表达式</label>
+          <!-- Preset quick-select buttons -->
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button type="button" @click="taskForm.cron = '30 0 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '30 0 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 00:30</button>
+            <button type="button" @click="taskForm.cron = '0 2 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '0 2 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 02:00</button>
+            <button type="button" @click="taskForm.cron = '0 7 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '0 7 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 07:00</button>
+            <button type="button" @click="taskForm.cron = '0 8 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '0 8 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 08:00</button>
+            <button type="button" @click="taskForm.cron = '30 8 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '30 8 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 08:30</button>
+            <button type="button" @click="taskForm.cron = '0 10 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '0 10 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 10:00</button>
+            <button type="button" @click="taskForm.cron = '0 14 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '0 14 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 14:00</button>
+            <button type="button" @click="taskForm.cron = '0 20 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '0 20 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 20:00</button>
+            <button type="button" @click="taskForm.cron = '0 22 * * *'" class="px-2.5 py-1 text-xs rounded-md border transition-colors" :class="taskForm.cron === '0 22 * * *' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'bg-slate-900 border-slate-700/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'">每天 22:00</button>
+          </div>
+          <!-- Simple time picker -->
+          <div class="flex items-center gap-2 mb-3">
+            <select x-model="cronPickerHour"
+                    class="bg-slate-900 border border-slate-700/50 rounded-lg px-2 py-1.5 text-sm text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50">
+              <template x-for="h in 24" :key="h">
+                <option :value="h - 1" x-text="String(h - 1).padStart(2, '0') + ' 时'"></option>
+              </template>
+            </select>
+            <span class="text-slate-500">:</span>
+            <select x-model="cronPickerMinute"
+                    class="bg-slate-900 border border-slate-700/50 rounded-lg px-2 py-1.5 text-sm text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50">
+              <template x-for="m in [0,5,10,15,20,25,30,35,40,45,50,55]" :key="m">
+                <option :value="m" x-text="String(m).padStart(2, '0') + ' 分'"></option>
+              </template>
+            </select>
+            <button type="button" @click="taskForm.cron = cronPickerMinute + ' ' + cronPickerHour + ' * * *'"
+                    class="px-3 py-1.5 text-xs font-medium bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/25 rounded-lg transition-colors">
+              设置
+            </button>
+          </div>
+          <!-- Advanced raw input -->
+          <label class="block text-xs text-slate-500 mb-1">高级：手动输入 Cron 表达式</label>
+          <input type="text" x-model="taskForm.cron" placeholder="0 7 * * *"
+                 class="w-full bg-slate-900 border border-slate-700/50 rounded-lg px-3 py-2 text-sm text-slate-200 font-mono placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50">
+          <div class="mt-1.5 px-2 py-1 rounded bg-slate-900/50 border border-slate-700/20" x-show="taskForm.cron">
+            <span class="text-xs text-indigo-400" x-text="'= ' + (cronToHuman(taskForm.cron) || '无效表达式')"></span>
+          </div>
+        </div>
+        <!-- Prompt -->
+        <div>
+          <label class="block text-sm font-medium text-slate-400 mb-1.5">执行提示词</label>
+          <textarea x-model="taskForm.prompt" rows="8" placeholder="描述此任务要执行的内容..."
+                    class="w-full h-48 bg-slate-900 border border-slate-700/50 rounded-lg px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 resize-y"></textarea>
+        </div>
+        <!-- Enabled -->
+        <div class="flex items-center justify-between">
+          <label class="text-sm font-medium text-slate-400">启用</label>
+          <button @click="taskForm.enabled = !taskForm.enabled"
+                  class="relative w-9 h-5 rounded-full transition-colors duration-200"
+                  :class="taskForm.enabled ? 'bg-indigo-500' : 'bg-slate-600'">
+            <span class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform duration-200 shadow-sm"
+                  :class="taskForm.enabled ? 'translate-x-4' : ''"></span>
+          </button>
+        </div>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-700/50 flex justify-end gap-3">
+        <button @click="showTaskModal = false"
+                class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors">
+          取消
+        </button>
+        <button @click="saveTask()"
+                class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-lg transition-colors">
+          <span x-text="editingTask ? '保存' : '创建'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div x-show="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center" x-transition>
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showDeleteModal = false"></div>
+    <div class="relative bg-slate-800 rounded-2xl border border-slate-700/50 shadow-2xl w-full max-w-sm mx-4 overflow-hidden"
+         @click.stop>
+      <div class="px-6 py-5">
+        <div class="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+          <svg class="w-6 h-6 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold text-slate-100 text-center">确认删除</h3>
+        <p class="text-sm text-slate-400 text-center mt-2">确定要删除任务 "<span x-text="deletingTask?.name" class="text-slate-200"></span>" 吗？此操作不可恢复。</p>
+      </div>
+      <div class="px-6 py-4 border-t border-slate-700/50 flex justify-end gap-3">
+        <button @click="showDeleteModal = false"
+                class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors">
+          取消
+        </button>
+        <button @click="deleteTask(deletingTask?.id)"
+                class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors">
+          删除
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function app() {
+      return {
+        // Navigation
+        currentView: 'dashboard',
+        navItems: [
+          { id: 'dashboard', label: '看板', icon: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
+          { id: 'tasks', label: '任务', icon: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>' },
+          { id: 'schedule', label: '调度', icon: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' },
+          { id: 'logs', label: '日志', icon: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>' },
+          { id: 'analytics', label: '数据', icon: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>' },
+          { id: 'monitor', label: '监控', icon: '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 10h2"/><path d="M15 10h2"/><path d="M11 10h2"/></svg>' },
+        ],
+
+        // State
+        currentTime: '',
+        refreshing: false,
+        status: { logged_in: false, account: null },
+        tasks: [],
+        logs: [],
+        published: [],
+        analyticsData: {},
+        timeline: [],
+        recentActivity: [],
+        crontab: '',
+        toasts: [],
+
+        // Monitor
+        cliLogLines: [],
+        cliLogOffset: 0,
+        cliLogAutoScroll: true,
+        cliLogPaused: false,
+        cliLogFilter: '',
+        cliLogPolling: null,
+        daemonStatus: { running: false, pid: null, state: null },
+
+        // Dashboard
+        todayPublished: 0,
+        todayInteractions: 0,
+        todayDateStr: new Date().toISOString().slice(0, 10),
+
+        // Task modal
+        showTaskModal: false,
+        editingTask: null,
+        taskForm: { name: '', phase: '5', cron: '', prompt: '', enabled: true },
+
+        // Delete modal
+        showDeleteModal: false,
+        deletingTask: null,
+
+        // Logs
+        logDate: new Date().toISOString().slice(0, 10),
+        logTaskFilter: '',
+        liveTracking: false,
+        logActiveTab: 'task',
+        logTabs: [
+          { id: 'task', label: '任务日志' },
+          { id: 'interact', label: '互动日志' },
+          { id: 'notification', label: '通知日志' },
+          { id: 'cdp', label: 'CDP 日志' },
+        ],
+
+        // Timers
+        _statusTimer: null,
+        _taskTimer: null,
+        _liveTimer: null,
+        _clockTimer: null,
+
+        // Cron picker state
+        cronPickerHour: 8,
+        cronPickerMinute: 0,
+
+        // Computed
+        get scheduledTasks() {
+          return this.tasks.filter(t => t.enabled && t.cron_expr);
+        },
+
+        // Init
+        async init() {
+          this.updateClock();
+          this._clockTimer = setInterval(() => this.updateClock(), 1000);
+          this._statusTimer = setInterval(() => this.fetchStatus(), 30000);
+          this._taskTimer = setInterval(() => this.fetchTasks(), 10000);
+
+          // Watch for live tracking toggle
+          this.$watch('liveTracking', (val) => {
+            if (val) {
+              this._liveTimer = setInterval(() => this.fetchLiveLogs(), 2000);
+            } else {
+              clearInterval(this._liveTimer);
+              this._liveTimer = null;
+            }
+          });
+
+          await this.refreshAll();
+        },
+
+        updateClock() {
+          const now = new Date();
+          this.currentTime = now.toLocaleTimeString('zh-CN', { hour12: false });
+        },
+
+        currentTimePercent() {
+          const now = new Date();
+          return ((now.getHours() * 60 + now.getMinutes()) / 1440 * 100).toFixed(2);
+        },
+
+        taskTimePercent(cron) {
+          if (!cron) return 0;
+          const parts = cron.trim().split(/\s+/);
+          if (parts.length < 2) return 0;
+          const min = parseInt(parts[0]) || 0;
+          const hour = parseInt(parts[1]) || 0;
+          return ((hour * 60 + min) / 1440 * 100).toFixed(2);
+        },
+
+        getTaskCron(task) {
+          return (task && task.cron_expr) || '';
+        },
+
+        // API Methods
+        async apiFetch(url, options = {}) {
+          try {
+            const res = await fetch(url, {
+              headers: { 'Content-Type': 'application/json' },
+              ...options,
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+          } catch (e) {
+            this.showToast(`请求失败: ${e.message}`, 'error');
+            throw e;
+          }
+        },
+
+        async fetchStatus() {
+          try {
+            const data = await this.apiFetch('/api/status');
+            this.status = data;
+          } catch (e) { /* silent */ }
+        },
+
+        async fetchTasks() {
+          try {
+            const data = await this.apiFetch('/api/tasks');
+            const raw = data.tasks || data || [];
+            // Normalize: ensure each task has both .cron and .cron_expr
+            this.tasks = raw.map(t => ({
+              ...t,
+              cron_expr: t.cron_expr || t.cron || '',
+              cron: t.cron || t.cron_expr || '',
+            }));
+          } catch (e) { /* silent */ }
+        },
+
+        async fetchTimeline() {
+          try {
+            const data = await this.apiFetch('/api/timeline');
+            this.timeline = data.timeline || data || [];
+          } catch (e) {
+            // Build timeline from tasks as fallback
+            this.timeline = this.tasks
+              .filter(t => t.enabled && t.cron_expr)
+              .map(t => ({
+                time: this.cronToTime(t.cron_expr),
+                name: t.name,
+                status: t.status === 'running' ? 'running' : t.status === 'completed' ? 'done' : t.status === 'failed' ? 'failed' : 'pending',
+              }))
+              .sort((a, b) => a.time.localeCompare(b.time));
+          }
+        },
+
+        async fetchRecentActivity() {
+          try {
+            const data = await this.apiFetch('/api/activity');
+            this.recentActivity = data.activity || data || [];
+          } catch (e) { /* silent */ }
+        },
+
+        async fetchLogs() {
+          try {
+            const params = new URLSearchParams({ date: this.logDate });
+            if (this.logTaskFilter) params.set('task_id', this.logTaskFilter);
+            if (this.logActiveTab) params.set('category', this.logActiveTab);
+            const data = await this.apiFetch(`/api/logs?${params}`);
+            this.logs = data.logs || data || [];
+            this.$nextTick(() => {
+              const viewer = this.$refs.logViewer;
+              if (viewer) viewer.scrollTop = viewer.scrollHeight;
+            });
+          } catch (e) { /* silent */ }
+        },
+
+        async fetchLiveLogs() {
+          if (!this.liveTracking) return;
+          const taskId = this.logTaskFilter || 'latest';
+          try {
+            const data = await this.apiFetch(`/api/logs/live/${taskId}`);
+            this.logs = data.logs || data || [];
+            this.$nextTick(() => {
+              const viewer = this.$refs.logViewer;
+              if (viewer) viewer.scrollTop = viewer.scrollHeight;
+            });
+          } catch (e) { /* silent */ }
+        },
+
+        async fetchAnalytics() {
+          try {
+            const data = await this.apiFetch('/api/analytics');
+            this.analyticsData = data;
+          } catch (e) { /* silent */ }
+        },
+
+        async fetchPublished() {
+          try {
+            const data = await this.apiFetch('/api/published');
+            this.published = data.notes || data || [];
+            this.todayPublished = this.published.filter(n => n.date === this.todayDateStr).length;
+          } catch (e) { /* silent */ }
+        },
+
+        async fetchDashboardStats() {
+          try {
+            const data = await this.apiFetch('/api/dashboard/stats');
+            if (data.todayPublished !== undefined) this.todayPublished = data.todayPublished;
+            if (data.todayInteractions !== undefined) this.todayInteractions = data.todayInteractions;
+          } catch (e) { /* silent */ }
+        },
+
+        async fetchCrontab() {
+          try {
+            const data = await this.apiFetch('/api/schedule/crontab');
+            this.crontab = data.raw || data.crontab || data.content || '';
+          } catch (e) { /* silent */ }
+        },
+
+        async refreshAll() {
+          this.refreshing = true;
+          await Promise.allSettled([
+            this.fetchStatus(),
+            this.fetchTasks(),
+            this.fetchPublished(),
+            this.fetchAnalytics(),
+            this.fetchRecentActivity(),
+            this.fetchDashboardStats(),
+            this.fetchCrontab(),
+            this.fetchLogs(),
+          ]);
+          await this.fetchTimeline();
+          this.refreshing = false;
+        },
+
+        // Task Actions
+        async runTask(id) {
+          try {
+            await this.apiFetch(`/api/tasks/${id}/run`, { method: 'POST' });
+            this.showToast('任务已启动', 'success');
+            await this.fetchTasks();
+          } catch (e) { /* handled */ }
+        },
+
+        async stopTask(id) {
+          try {
+            await this.apiFetch(`/api/tasks/${id}/stop`, { method: 'POST' });
+            this.showToast('任务已停止', 'success');
+            await this.fetchTasks();
+          } catch (e) { /* handled */ }
+        },
+
+        async toggleTask(task) {
+          try {
+            await this.apiFetch(`/api/tasks/${task.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ ...task, enabled: !task.enabled }),
+            });
+            task.enabled = !task.enabled;
+            this.showToast(task.enabled ? '任务已启用' : '任务已禁用', 'info');
+          } catch (e) { /* handled */ }
+        },
+
+        openCreateTaskModal() {
+          this.editingTask = null;
+          this.taskForm = { name: '', phase: '5', cron: '', prompt: '', enabled: true };
+          this.showTaskModal = true;
+        },
+
+        openEditTaskModal(task) {
+          this.editingTask = task;
+          this.taskForm = { ...task, phase: String(task.phase), cron: task.cron_expr || task.cron };
+          this.showTaskModal = true;
+        },
+
+        confirmDeleteTask(task) {
+          this.deletingTask = task;
+          this.showDeleteModal = true;
+        },
+
+        async saveTask() {
+          if (!this.taskForm.name) {
+            this.showToast('请输入任务名称', 'warning');
+            return;
+          }
+          const payload = { ...this.taskForm, phase: parseInt(this.taskForm.phase), cron_expr: this.taskForm.cron };
+          try {
+            if (this.editingTask) {
+              await this.apiFetch(`/api/tasks/${this.editingTask.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload),
+              });
+              this.showToast('任务已更新', 'success');
+            } else {
+              await this.apiFetch('/api/tasks', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+              });
+              this.showToast('任务已创建', 'success');
+            }
+            this.showTaskModal = false;
+            await this.fetchTasks();
+          } catch (e) { /* handled */ }
+        },
+
+        async deleteTask(id) {
+          if (!id) return;
+          try {
+            await this.apiFetch(`/api/tasks/${id}`, { method: 'DELETE' });
+            this.showToast('任务已删除', 'success');
+            this.showDeleteModal = false;
+            this.deletingTask = null;
+            await this.fetchTasks();
+          } catch (e) { /* handled */ }
+        },
+
+        async syncSchedule() {
+          try {
+            await this.apiFetch('/api/schedule/sync', { method: 'POST' });
+            this.showToast('调度已同步到系统', 'success');
+            await this.fetchCrontab();
+          } catch (e) { /* handled */ }
+        },
+
+        // Helpers
+        statusLabel(status) {
+          const map = {
+            pending: '待执行',
+            running: '执行中',
+            done: '已完成',
+            completed: '已完成',
+            failed: '失败',
+            idle: '空闲',
+            disabled: '已禁用',
+          };
+          return map[status] || status || '未知';
+        },
+
+        cronToHuman(cron) {
+          if (!cron) return '';
+          const parts = cron.trim().split(/\s+/);
+          if (parts.length < 5) return cron;
+          const [min, hour, dom, mon, dow] = parts;
+          const pad = (n) => String(n).padStart(2, '0');
+          const isStep = (v) => v.includes('/');
+          const stepVal = (v) => v.split('/')[1];
+
+          if (dom === '*' && mon === '*' && dow === '*') {
+            // */N * * * * → 每 N 分钟
+            if (isStep(min) && hour === '*') return `每 ${stepVal(min)} 分钟`;
+            // * * * * * → 每分钟
+            if (min === '*' && hour === '*') return '每分钟';
+            // N * * * * → 每小时第 N 分
+            if (!isStep(min) && min !== '*' && hour === '*') return `每小时第 ${pad(min)} 分`;
+            // */N */M * * * → 每 M 小时每 N 分钟
+            if (isStep(min) && isStep(hour)) return `每 ${stepVal(hour)} 小时, 每 ${stepVal(min)} 分钟`;
+            // 0 */N * * * → 每 N 小时
+            if (min === '0' && isStep(hour)) return `每 ${stepVal(hour)} 小时`;
+            // N */M * * * → 每 M 小时, 第 N 分
+            if (!isStep(min) && isStep(hour)) return `每 ${stepVal(hour)} 小时, 第 ${pad(min)} 分`;
+            // N H,H * * * → 每天 HH:MM, HH:MM
+            if (hour.includes(',')) {
+              return `每天 ` + hour.split(',').map(h => pad(h) + ':' + pad(min)).join(', ');
+            }
+            // N H * * * → 每天 HH:MM
+            if (hour !== '*' && min !== '*') return `每天 ${pad(hour)}:${pad(min)}`;
+          }
+          if (dom === '*' && mon === '*' && dow !== '*') {
+            const dayMap = { 0: '日', 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六' };
+            const days = dow.split(',').map(d => '周' + (dayMap[d] || d)).join('、');
+            return `${days} ${pad(hour)}:${pad(min)}`;
+          }
+          if (dom !== '*' && mon === '*') {
+            return `每月 ${dom} 日 ${pad(hour)}:${pad(min)}`;
+          }
+          return cron;
+        },
+
+        cronToTime(cron) {
+          if (!cron) return '00:00';
+          const parts = cron.trim().split(/\s+/);
+          if (parts.length < 2) return '00:00';
+          const min = parseInt(parts[0]) || 0;
+          const hour = parseInt(parts[1]) || 0;
+          return String(hour).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+        },
+
+        showToast(message, type = 'info') {
+          const toast = { message, type, visible: true };
+          this.toasts.push(toast);
+          setTimeout(() => {
+            toast.visible = false;
+            setTimeout(() => {
+              this.toasts = this.toasts.filter(t => t !== toast);
+            }, 300);
+          }, 4000);
+        },
+      };
+    }
+  </script>
+</body>
+</html>

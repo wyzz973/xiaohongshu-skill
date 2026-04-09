@@ -23,6 +23,21 @@ logs/
 /tmp/xhs-*.txt
 *.log
 
+# Dashboard frontend
+dashboard/frontend/node_modules/
+dashboard/frontend/dist/
+dashboard/frontend/.playwright-mcp/
+
+# Screenshots & temp images
+*.png
+*.jpg
+
+# Superpowers brainstorm
+.superpowers/
+
+# Docs (private plans/specs)
+docs/
+
 # OS
 .DS_Store
 Thumbs.db
